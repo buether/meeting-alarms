@@ -1,0 +1,12 @@
+{
+  "lead_seconds": 15,
+  "poll_seconds": 60,
+  "max_alarm_seconds": 900,
+  "message": "Meeting starting",
+  "volume": 75,
+  "speak": true,
+  "sound": "/System/Library/PrivateFrameworks/ToneLibrary.framework/Versions/A/Resources/Ringtones/Silk.m4r",
+  "fallback_sound": "/System/Library/Sounds/Sosumi.aiff",
+  "include_calendars": [],
+  "expected_source": null
+}

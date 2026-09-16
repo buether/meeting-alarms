@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.buether.meeting-alarm</string>
+  <key>CFBundleName</key>
+  <string>Meeting Alarm</string>
+  <key>CFBundleDisplayName</key>
+  <string>Meeting Alarm</string>
+  <key>CFBundleExecutable</key>
+  <string>meeting-alarm-launcher</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Meeting Alarm reads upcoming meetings so it can sound an alarm before they start.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>Meeting Alarm reads upcoming meetings so it can sound an alarm before they start.</string>
+</dict>
+</plist>

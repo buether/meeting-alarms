@@ -1,0 +1,2 @@
+#!/bin/bash
+exec "${PYTHON:-python3}" "$(cd "$(dirname "$0")/.." && pwd)/meeting_alarm.py" "$@"
