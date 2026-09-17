@@ -15,6 +15,7 @@ final class AlarmWindow: NSObject, NSApplicationDelegate {
         let bounds = NSRect(x: 0, y: 0, width: 560, height: 260)
         let window = NSWindow(contentRect: bounds, styleMask: [.titled], backing: .buffered, defer: false)
         window.title = "Meeting Alarm"
+        // Rings over full-screen apps, on whatever Space is in front.
         window.level = .screenSaver
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isReleasedWhenClosed = false

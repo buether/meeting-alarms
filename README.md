@@ -1,163 +1,190 @@
-# meeting-alarm
+# Meeting Alarm
 
-A loud alarm 15 seconds before a meeting starts, on macOS, that keeps
-sounding until you click Dismiss. It exists because Google Calendar's
-10-minute notification is easy to ignore when you are deep in something.
+An alarm that goes off 15 seconds before a meeting starts and keeps ringing
+until you click Dismiss or Join. For macOS.
 
-## How it works
+A calendar notification ten minutes ahead arrives while you are in the middle
+of something, and is gone by the time you surface.
 
-launchd runs `meeting_alarm.py poll` every 60 seconds. The poll asks
-`meeting-alarm-calendar`, a small EventKit client built from `calendar/main.swift`,
-for the events in the window it cares about, so any account in Calendar.app works
-and there is no Google OAuth client to maintain. An event alarms when
-it is not all-day or canceled, has at least one other attendee, and your
-response is anything except declined or tentative (unanswered invitations
-alarm). Each occurrence alarms once, keyed by event id and start time. A move
-changes the key, so the alarm follows the meeting to its new time. One that had
-already alarmed before the move alarms again.
+- Wakes the display, raises the volume, speaks, and loops a sound.
+- The alarm window sits above every Space and full-screen app.
+- **Join** opens the Zoom, Teams, Meet or Webex link from the invitation.
+- Reads Calendar.app, so every account your Mac already syncs is covered.
+- Silent for all-day events and invitations you declined.
+- Nothing to sign in to, no API keys, nothing leaves the Mac.
 
-Past that the poll fails towards alarming. A meeting that has ended is the only
-reason to stay silent about an eligible event: one still running alarms however
-late the Mac woke up, and an event with a missing or unreadable field alarms
-rather than being skipped.
+## Install
 
-The alarm is a detached process. The poll may spawn it up to a minute
-early, so it first waits until exactly `lead_seconds` before the start. Then
-it wakes the display, raises the output volume, speaks `message`, loops the
-sound, and shows a native window that floats above every Space and
-full-screen app with the message, the meeting name, and Join and Dismiss
-buttons. Join opens the meeting link. Either button stops the sound
-and restores the volume. A cap of `max_alarm_seconds` after the meeting
-start stops an alarm nobody is around to hear.
-
-The launchd job runs through a tiny signed app bundle, `build/MeetingAlarm.app`,
-because macOS only shows the Calendar permission prompt to a bundled app
-with a usage description. `meeting-alarm-calendar` lives inside that bundle and
-is covered by the same signature, so the only code that reads your calendar is
-code this repository builds. Changing `launcher.c` or `calendar/main.swift`
-changes the bundle's signature and macOS asks for Calendar access again.
-
-## Setup
-
-1. System Settings > Internet Accounts > add the Google account, Calendars
-   only.
-2. Calendar.app > Settings > Accounts > Refresh Calendars: **Every minute**.
-   Google CalDAV does not push to Calendar.app.
-3. `./install.sh`, then click **Allow** on the "Meeting Alarm" calendar prompt.
-4. `bin/meeting-alarm status` should show a recent successful poll.
-5. Optional: set `expected_source` in `config.json` to the account's source
-   title, so a signed-out account is reported instead of looking like an empty
-   calendar. `build/MeetingAlarm.app/Contents/MacOS/meeting-alarm-calendar
-   calendars` lists the titles.
-
-## Commands
+Needs macOS 14 or later and the Xcode command line tools, which supply the
+`cc`, `swiftc` and `python3` the installer uses:
 
 ```
-bin/meeting-alarm status                 poller health, sound file, recent alarms, next 8 hours with alarm/skip reasons
-bin/meeting-alarm poll --dry-run         what this minute's poll would do, without alarming
-bin/meeting-alarm poll --dry-run --now 2026-09-16T09:58:30
-bin/meeting-alarm test                   ring a test alarm through the real launchd path
-bin/meeting-alarm alarm --title Test --start $(date +%s) --max-seconds 10 --volume 30
-./install.sh                             re-render plists and reload after config or code changes
-./uninstall.sh
+xcode-select --install
 ```
 
-Logs: `~/Library/Logs/meeting-alarm/{poll,alarm,launchd}.log`.
-State: `~/Library/Application Support/meeting-alarm/state.json`.
-
-## Config
-
-`install.sh` copies `config.example.json` to `config.json` on first run.
-`config.json` is yours and is not committed. Any key below may appear in it;
-anything it leaves out falls back to the default.
-
-| Key | Default | What it does |
-| --- | --- | --- |
-| `lead_seconds` | `15` | Seconds before the start that the alarm sounds. |
-| `poll_seconds` | `60` | How often launchd runs the poll. Must match `StartInterval` in the plist. |
-| `max_alarm_seconds` | `900` | Give up this long after the meeting start. `0` rings until dismissed. |
-| `message` | `Meeting starting` | Headline in the window, and the spoken text. |
-| `volume` | `75` | Output volume while ringing, 0 to 100. The previous level and mute state are restored afterwards. |
-| `speak` | `true` | Speak `message` through `say` before the sound starts looping. |
-| `sound` | `Silk.m4r` | Sound file to loop. Full path; see below. |
-| `fallback_sound` | `Sosumi.aiff` | Used when `sound` is not on disk. With neither on disk the alarm still speaks and shows the window, but nothing loops; `alarm.log` records `no sound file found`. |
-| `include_calendars` | `[]` | Calendar titles to watch. Empty means all of them. |
-| `expected_source` | `null` | Account source title that must still be present, so a signed-out account is reported instead of looking like an empty calendar. |
-| `failure_notice_after_seconds` | `1800` | Show a dialog once polls have been failing for this long. |
-| `failure_notice_every_seconds` | `14400` | Shortest gap between those dialogs. |
-| `fired_retention_seconds` | `172800` | How long a fired occurrence is remembered, so it cannot alarm twice. |
-
-The last three are not in `config.example.json`; add them only to change them.
-
-Sounds: `sound` is Silk from Apple's tone library. Gentler neighbours in
-`/System/Library/PrivateFrameworks/ToneLibrary.framework/Versions/A/Resources/Ringtones/`
-are Ripples, Harp, Chimes, Waves, Slow Rise, and By The Seaside; the original
-loud one is Alarm. Short system sounds in `/System/Library/Sounds/` also work.
-
-## How to verify installation
-
-Both agents are loaded:
+Then:
 
 ```
-launchctl list | grep meeting-alarm
+git clone https://github.com/buether/meeting-alarms.git
+cd meeting-alarms
+./install.sh
 ```
 
-Expect two lines, `com.buether.meeting-alarm` and the `.watchdog` one. Neither
-means `./install.sh` did not finish; run it again and read its output.
-
-The poller is succeeding:
-
-```
-bin/meeting-alarm status
-```
-
-`last successful poll` should be under a minute old, and `sound` should name a
-file rather than `MISSING`. A sound reported as a fallback means the configured
-one is not on disk. `FAILING` with "Calendar access denied" means the grant is
-missing: enable Meeting Alarm under System Settings, Privacy & Security,
-Calendars. To replay the prompt, run `tccutil reset Calendar
-com.buether.meeting-alarm` and `./install.sh` again. If no prompt ever
-appeared, this says whether macOS considered one:
-
-```
-log show --last 10m --predicate 'process == "tccd"' | grep -i meeting
-```
-
-The right events are selected:
-
-```
-bin/meeting-alarm poll --dry-run
-```
-
-One line per event in the window, each with FIRE or skip and the reason. An
-empty list when you know you have meetings means Calendar.app has not synced;
-Setup covers its refresh interval.
-
-The alarm itself rings:
+macOS asks once whether **Meeting Alarm** may read your calendar. Click Allow.
+Then hear it:
 
 ```
 bin/meeting-alarm test
 ```
 
-This runs through launchd and the signed bundle, so it exercises the path a
-real alarm takes rather than a shortcut. Within a few seconds the display
-wakes, the message is spoken, and the sound loops until you click Dismiss. A
-spoken message and a window with no repeating sound means neither `sound` nor
-`fallback_sound` is on disk.
+That test goes through launchd and the signed bundle, the same path a real
+alarm takes.
 
-Later failures report themselves. The poller shows a dialog once polls have
-been failing for 30 minutes, and at most every 4 hours after that. A watchdog
-agent checks at 10:05 and 14:05 and shows a dialog if no poll has succeeded in
-3 hours.
+Keep the clone where it is. The launchd job runs the code from this directory,
+so moving or deleting the clone stops the alarms.
+
+### Make a Google calendar sync fast enough
+
+Add the account under System Settings > Internet Accounts, Calendars only,
+then set Calendar.app > Settings > Accounts > Refresh Calendars to **Every
+minute**. Google does not push to Calendar.app, and at the default interval a
+meeting added this morning can be missed.
+
+## What an alarm does
+
+Fifteen seconds before the start, your Mac wakes the display, raises the output
+volume to 75 percent, says "Meeting starting", and loops a sound. A window
+naming the meeting floats above whatever you are doing. **Join** opens the
+meeting link. **Dismiss** stops the alarm. Both restore the volume and mute
+state you had. Fifteen minutes after the start the alarm gives up, so a meeting
+you are not there for does not ring all afternoon.
+
+Every number there is a setting.
+
+## Which meetings ring
+
+A meeting rings when someone other than you is on it and you have accepted it
+or not answered yet. All-day events, canceled events, events you declined or
+marked tentative, and events only you are on stay silent.
+
+Each occurrence rings once. Move a meeting and it rings again at its new time.
+A meeting still in progress rings however late your Mac woke up; one that has
+already ended does not. An event with a field it cannot read rings anyway,
+because a missed meeting costs more than a spurious alarm.
+
+`bin/meeting-alarm status` applies those rules to the next eight hours and
+prints a verdict and a reason for every event.
+
+## Commands
+
+```
+bin/meeting-alarm status            poller health, recent alarms, and a verdict per event for the next 8 hours
+bin/meeting-alarm poll --dry-run    what this minute's poll would do, without ringing anything
+bin/meeting-alarm test              ring a test alarm
+./install.sh                        rebuild and reload after changing the code or poll_seconds
+./uninstall.sh                      remove the background jobs; logs and history stay
+```
+
+`poll.log`, `alarm.log` and `launchd.log` are in `~/Library/Logs/meeting-alarm/`.
+
+## Settings
+
+`install.sh` creates `config.json` from `config.example.json` on first run.
+`config.json` is yours and is not committed. Leave a key out and the default
+applies. Edits take effect at the next poll, within a minute; `poll_seconds`
+is the exception and needs `./install.sh`.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `message` | `Meeting starting` | Headline in the window, and the spoken words. |
+| `sound` | Silk | Sound file to loop. Full path; see below. |
+| `volume` | `75` | Output volume while ringing, 0 to 100. Your level and mute state come back afterwards. |
+| `speak` | `true` | Say `message` out loud before the sound starts. |
+| `lead_seconds` | `15` | Seconds before the start that it rings. |
+| `max_alarm_seconds` | `900` | Seconds after the start to give up. `0` rings until dismissed. |
+| `include_calendars` | `[]` | Calendar titles to watch. Empty watches all of them. |
+| `fallback_sound` | Sosumi | Used when `sound` is not on disk. With neither, the alarm still speaks and shows the window. |
+| `expected_source` | `null` | Account name that must still be present, so a signed-out account is reported rather than looking like an empty calendar. |
+| `poll_seconds` | `60` | Seconds between calendar checks. |
+
+To fill in `expected_source`, list the account names:
+
+```
+build/MeetingAlarm.app/Contents/MacOS/meeting-alarm-calendar calendars
+```
+
+Three keys govern how the tool reports its own failures and are absent from
+`config.example.json`: `failure_notice_after_seconds` (1800) is how long polls
+must fail before it says so, `failure_notice_every_seconds` (14400) the
+shortest gap between those warnings, and `fired_retention_seconds` (172800)
+how long a meeting is remembered as already rung.
+
+## Sounds
+
+The default is Silk, one of Apple's ringtones. They live here:
+
+```
+/System/Library/PrivateFrameworks/ToneLibrary.framework/Versions/A/Resources/Ringtones/
+```
+
+Gentler ones in that directory are Ripples, Harp, Chimes, Waves, Slow Rise and
+By The Seaside. Alarm is the loud one. Anything in `/System/Library/Sounds/`
+works too. To hear one before you keep it, put its path in `config.json` and
+ring a ten-second alarm:
+
+```
+bin/meeting-alarm alarm --title Test --start $(date +%s) --max-seconds 10
+```
+
+## When something goes wrong
+
+The tool reports its own failures. After polls have been failing for half an
+hour a dialog says so, and a watchdog checks at 10:05 and 14:05 and complains
+if nothing has succeeded in three hours. To check for yourself:
+
+```
+bin/meeting-alarm status
+```
+
+A healthy answer has a `last successful poll` under a minute old and names a
+sound file rather than `MISSING`.
+
+- **`FAILING` with "Calendar access denied".** Turn Meeting Alarm on under
+  System Settings > Privacy & Security > Calendars. To get the prompt back,
+  run `tccutil reset Calendar com.buether.meeting-alarm` and `./install.sh`.
+- **`launchd: NOT LOADED`.** `./install.sh` did not finish. Run it again and
+  read its output.
+- **No events listed, though you have meetings.** Calendar.app has not synced
+  them. Set its refresh interval, as under Install.
+- **A window and speech, but no repeating sound.** Neither `sound` nor
+  `fallback_sound` is on disk, and `alarm.log` says `no sound file found`.
 
 ## Limitations
 
-- Events where you are the only attendee do not alarm, even with a meeting link.
-- Calendar.app cannot tell whether you joined, so an alarm for a meeting
-  already in progress may be for one you are already in.
-- The alarm plays through whichever output device is selected, and raises that
-  device's volume. Headphones left off your head take the sound with them.
+- A meeting only you are on never rings, even with a link on it.
+- Calendar.app cannot tell whether you already joined, so a meeting in
+  progress may ring while you are already in it.
+- The sound follows your selected output device and raises that device's
+  volume. Headphones off your head take the alarm with them.
+
+## How it works
+
+launchd runs a poll every 60 seconds. The poll asks `meeting-alarm-calendar`,
+a small EventKit client, for events between eight hours ago and a couple of
+minutes ahead. Reading Calendar.app is what covers every account your Mac syncs and
+leaves no Google API client to maintain. A meeting that is due gets a detached
+alarm process, spawned up to a minute early and waiting out the difference, so
+the alarm outlives the poll that started it.
+
+That calendar client lives inside `build/MeetingAlarm.app`, a signed bundle
+built on your machine from `launcher/launcher.c` and `calendar/main.swift`,
+because macOS only offers the Calendar permission prompt to a bundled app that
+declares why it wants access. The signature covers the whole bundle, so the
+only thing that reads your calendar is code in this repository, and changing
+that code makes macOS ask you again.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+Built by [John Buether](https://github.com/buether).

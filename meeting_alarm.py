@@ -4,7 +4,7 @@
 Subcommands:
   poll      Query upcoming events through EventKit and spawn an alarm for
             any that are due. launchd runs this every minute.
-  alarm     Loop a sound and show a Dismiss dialog until dismissed.
+  alarm     Loop a sound and show the alarm window until dismissed.
   test      Arm a one-off alarm for the next poll and kick the launchd job.
   status    Poller health, recent alarms, and upcoming candidates.
   watchdog  Warn if the poller has not succeeded recently.
@@ -51,8 +51,8 @@ DEFAULTS = {
 
 SKIP_STATUSES = ("declined", "tentative")
 
-# A meeting still in progress alarms however late the Mac woke up. This only
-# bounds how far back a poll looks for one; the end time makes the decision.
+# A meeting still in progress alarms however late the Mac woke up. The lookback
+# only bounds how far back a poll looks for one; the end time makes the decision.
 LATE_LOOKBACK_SECONDS = 8 * 3600
 
 
@@ -303,6 +303,8 @@ def poll(args):
         else:
             lo, hi = fire_window(now, cfg)
             events = fetch_events(cfg, lo, hi)
+        # EventKit matches events overlapping the window, so one that started
+        # before the lookback comes back too.
         events = within(events, *fire_window(now, cfg))
         if cfg["expected_source"] and now - state["last_calendars_check"] > 3600:
             check_calendars(cfg)
@@ -362,8 +364,6 @@ def set_volume(level, muted):
 
 
 def describe_sound(cfg):
-    """A missing sound degrades an alarm to one spoken line, which is easy to
-    mistake for a working one when testing."""
     sound = resolve_sound(cfg)
     if sound is None:
         return "MISSING - the alarm will speak once but not loop"
@@ -395,6 +395,8 @@ end try
 display dialog (item 1 of argv) with title "Meeting starting" buttons {"Dismiss"} default button 1 with icon caution giving up after ((item 2 of argv) as integer)
 end run"""
 
+APPLESCRIPT_USER_CANCELED = "-128"
+
 current_dialog = None
 
 
@@ -421,7 +423,7 @@ def show_dialog(headline, detail, url, give_up_after):
     if native:
         return {0: "dismissed", 2: "gave_up"}.get(code, "error")
     if code != 0:
-        return "dismissed" if "-128" in err else "error"
+        return "dismissed" if APPLESCRIPT_USER_CANCELED in err else "error"
     return "gave_up" if "gave up:true" in out else "dismissed"
 
 
@@ -449,6 +451,8 @@ def alarm(args):
         if wait > 0:
             time.sleep(wait)
         STATE_DIR.mkdir(parents=True, exist_ok=True)
+        # Meetings a minute apart put two alarms on screen at once. Only the
+        # lock holder raises the volume and loops the sound.
         lock = open(ALARM_LOCK, "w")
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -493,6 +497,7 @@ def alarm(args):
         if loop:
             os.killpg(loop.pid, signal.SIGTERM)
         if saved:
+            # Someone who turned the volume down by hand keeps their level.
             current = get_volume()
             if current and current["level"] == cfg["volume"] and not current["muted"]:
                 set_volume(saved["level"], saved["muted"])
