@@ -16,7 +16,7 @@ of something, and is gone by the time you surface.
 ## Install
 
 Needs macOS 14 or later and the Xcode command line tools, which supply the
-`cc`, `swiftc` and `python3` the installer uses:
+`swiftc` the installer uses:
 
 ```
 xcode-select --install
@@ -81,6 +81,7 @@ prints a verdict and a reason for every event.
 bin/meeting-alarm status            poller health, recent alarms, and a verdict per event for the next 8 hours
 bin/meeting-alarm poll --dry-run    what this minute's poll would do, without ringing anything
 bin/meeting-alarm test              ring a test alarm
+bin/meeting-alarm calendars         calendar titles and account names EventKit can see
 ./install.sh                        rebuild and reload after changing the code or poll_seconds
 ./uninstall.sh                      remove the background jobs; logs and history stay
 ```
@@ -100,6 +101,7 @@ is the exception and needs `./install.sh`.
 | `sound` | Silk | Sound file to loop. Full path; see below. |
 | `volume` | `75` | Output volume while ringing, 0 to 100. Your level and mute state come back afterwards. |
 | `speak` | `true` | Say `message` out loud before the sound starts. |
+| `break_mute` | `true` | Ring through a muted Mac, then put the mute back. `false` respects the mute and leaves the output alone, so the alarm is silent but the window still appears. |
 | `lead_seconds` | `15` | Seconds before the start that it rings. |
 | `max_alarm_seconds` | `900` | Seconds after the start to give up. `0` rings until dismissed. |
 | `include_calendars` | `[]` | Calendar titles to watch. Empty watches all of them. |
@@ -107,10 +109,10 @@ is the exception and needs `./install.sh`.
 | `expected_source` | `null` | Account name that must still be present, so a signed-out account is reported rather than looking like an empty calendar. |
 | `poll_seconds` | `60` | Seconds between calendar checks. |
 
-To fill in `expected_source`, list the account names:
+To fill in `include_calendars` or `expected_source`, list what EventKit sees:
 
 ```
-build/MeetingAlarm.app/Contents/MacOS/meeting-alarm-calendar calendars
+bin/meeting-alarm calendars
 ```
 
 Three keys govern how the tool reports its own failures and are absent from
@@ -169,19 +171,25 @@ sound file rather than `MISSING`.
 
 ## How it works
 
-launchd runs a poll every 60 seconds. The poll asks `meeting-alarm-calendar`,
-a small EventKit client, for events between eight hours ago and a couple of
-minutes ahead. Reading Calendar.app is what covers every account your Mac syncs and
-leaves no Google API client to maintain. A meeting that is due gets a detached
-alarm process, spawned up to a minute early and waiting out the difference, so
+launchd runs `meeting-alarm poll` every 60 seconds. The poll asks EventKit for
+events between eight hours ago and a couple of minutes ahead. Reading
+Calendar.app is what covers every account your Mac syncs and leaves no Google
+API client to maintain. A meeting that is due gets a detached `meeting-alarm
+alarm` process, spawned up to a minute early and waiting out the difference, so
 the alarm outlives the poll that started it.
 
-That calendar client lives inside `build/MeetingAlarm.app`, a signed bundle
-built on your machine from `launcher/launcher.c` and `calendar/main.swift`,
-because macOS only offers the Calendar permission prompt to a bundled app that
-declares why it wants access. The signature covers the whole bundle, so the
-only thing that reads your calendar is code in this repository, and changing
-that code makes macOS ask you again.
+Everything is one Swift binary inside `build/MeetingAlarm.app`, a signed bundle
+built on your machine from `src/`, because macOS only offers the Calendar
+permission prompt to a bundled app that declares why it wants access. The
+signature covers the whole bundle, so the only thing that reads your calendar is
+code in this repository, and changing that code makes macOS ask you again.
+
+Two meetings a minute apart put two alarm windows on screen. Only the one
+holding `alarm.lock` raises the volume and loops the sound, so they do not
+fight over the output device.
+
+Run `./run-tests.sh` to build and run the unit tests. They cover the selection
+logic, so they need no calendar, no permissions and no window server.
 
 ## License
 

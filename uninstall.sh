@@ -3,7 +3,7 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-LABEL=com.buether.meeting-alarm
+LABEL="${MEETING_ALARM_LABEL:-com.buether.meeting-alarm}"
 AGENTS="$HOME/Library/LaunchAgents"
 DOMAIN="gui/$(id -u)"
 

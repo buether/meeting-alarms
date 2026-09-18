@@ -10,41 +10,45 @@ downloads, so an ad-hoc signed `MeetingAlarm.app` would be blocked by Gatekeeper
 until it is notarized. Compiling on the user's machine produces binaries with no
 quarantine attribute, so `codesign --sign -` is enough.
 
-**`/usr/bin/python3`, not a Homebrew Python.** The Command Line Tools ship
-Python 3.9.6 as of macOS 26.6. The test suite passes on it and both Python files
-parse on it, so the formula needs no Python dependency: `depends_on xcode:
-:clt` already covers `cc`, `swiftc` and the interpreter. The cost is no 3.10+
-syntax, ever. Run the suite under both interpreters before a release.
+**No interpreter.** The Swift port removed the Python half of the install, so
+`depends_on xcode: :clt` is now only there for `swiftc`. Nothing in the formula
+depends on a language runtime that Apple ships as a Command Line Tools
+component rather than a platform API.
 
-**Ad-hoc signing, for now.** Every upgrade rebuilds the launcher, changes its
+**Ad-hoc signing, for now.** Every upgrade rebuilds the binary, changes its
 cdhash, and costs the user the Calendar grant. A Developer ID certificate would
 replace the cdhash requirement with a Team ID one that survives upgrades; until
 then the `tccutil reset` in the README is the fix.
 
 ## To do
 
-- [ ] Resolve the config path outside the install directory. `CONFIG_PATH`
-      (meeting_alarm.py:25) sits next to the script, which under Homebrew is
-      `libexec` in the Cellar and is deleted on upgrade. Order:
-      `$MEETING_ALARM_CONFIG`, `~/Library/Application Support/meeting-alarm/config.json`,
-      the repository copy, `DEFAULTS`.
-- [ ] Stop hardcoding the launchd label. `LABEL` (meeting_alarm.py:26) is what
-      `test` kickstarts and `status` prints, and `brew services` labels its job
-      `homebrew.mxcl.meeting-alarm`, so both subcommands would report NOT LOADED
-      against a healthy service. Read an environment variable, keep the current
-      value as the default. The bundle identifier in launcher/Info.plist is a
-      separate thing and does not move.
 - [ ] Add a `meeting-alarm install` subcommand that renders and loads both
       agents, taking over the launchd half of install.sh; install.sh keeps the
       build and calls it. A formula gets one service block, and Homebrew's cron
       parser takes a single value per field, so the watchdog's 10:05 and 14:05
       cannot be a second brew service.
-- [ ] Exercise `status`, `test` and `alarm` under `PYTHON=/usr/bin/python3`. The
-      test suite covers selection logic only; nothing runs the subprocess,
-      osascript or fcntl paths on 3.9.
+- [ ] Exercise `status`, `test` and `alarm` from a Cellar install. The unit
+      tests cover selection logic only; nothing has run the EventKit, CoreAudio
+      or AppKit paths against `opt_libexec` paths.
 - [ ] Tag v1.0.0 and take the sha256 of the GitHub tarball.
 - [ ] Create the tap repository, `homebrew-tap`, holding the formula at
       `Formula/meeting-alarm.rb`.
+
+## Closed by the Swift port
+
+- Config no longer sits next to the binary. `Paths.configPath` resolves
+  `$MEETING_ALARM_CONFIG`, then `~/Library/Application Support/meeting-alarm/config.json`,
+  then the repository copy, then the built-in defaults.
+- The launchd label is no longer hardcoded. `$MEETING_ALARM_LABEL` overrides it,
+  so `test` and `status` can be pointed at `homebrew.mxcl.meeting-alarm`.
+- `launcher.c` is gone. It existed to keep launchd's job process on the signed
+  bundle while the real work happened in a Python child; the bundle executable
+  now does the work itself.
+- An event with a nil `startDate` or `endDate` is no longer dropped before the
+  fail-safe sees it.
+- The empty-calendar-list guard has a comment: an empty array would mean "every
+  calendar" to `predicateForEvents`, the opposite of what `include_calendars`
+  matching nothing should produce.
 
 ## Formula draft
 
@@ -60,33 +64,28 @@ class MeetingAlarm < Formula
   depends_on macos: :sonoma
 
   def install
-    macos_dir = libexec/"MeetingAlarm.app/Contents/MacOS"
-    macos_dir.mkpath
-    system ENV.cc, "-O2", "-Wall", "-o", macos_dir/"meeting-alarm-launcher", "launcher/launcher.c"
-    system "swiftc", "-O", "-suppress-warnings", "-o", macos_dir/"meeting-alarm-calendar",
-           "calendar/main.swift"
-    (libexec/"MeetingAlarm.app/Contents").install "launcher/Info.plist"
-    system "codesign", "--force", "--sign", "-", libexec/"MeetingAlarm.app"
-
-    system "swiftc", "-O", "-suppress-warnings", "-o", libexec/"meeting-alarm-dialog",
-           "dialog/main.swift"
-    libexec.install "meeting_alarm.py"
+    app = libexec/"MeetingAlarm.app"
+    (app/"Contents/MacOS").mkpath
+    system "swiftc", "-target", "#{Hardware::CPU.arch}-apple-macos14.0",
+           "-O", "-suppress-warnings",
+           "-o", app/"Contents/MacOS/meeting-alarm", *Dir["src/*.swift"]
+    (app/"Contents").install "app/Info.plist"
+    system "codesign", "--force", "--sign", "-", app
     pkgshare.install "config.example.json"
 
     (bin/"meeting-alarm").write <<~BASH
       #!/bin/bash
-      exec "${PYTHON:-/usr/bin/python3}" "#{opt_libexec}/meeting_alarm.py" "$@"
+      exec "#{opt_libexec}/MeetingAlarm.app/Contents/MacOS/meeting-alarm" "$@"
     BASH
   end
 
   service do
-    run [opt_libexec/"MeetingAlarm.app/Contents/MacOS/meeting-alarm-launcher",
-         "/usr/bin/python3", opt_libexec/"meeting_alarm.py", "poll"]
+    run [opt_libexec/"MeetingAlarm.app/Contents/MacOS/meeting-alarm", "poll"]
     run_type :interval
     interval 60
     log_path var/"log/meeting-alarm.log"
     error_log_path var/"log/meeting-alarm.log"
-    environment_variables PATH: std_service_path_env
+    environment_variables MEETING_ALARM_LABEL: "homebrew.mxcl.meeting-alarm"
   end
 
   test do
@@ -95,18 +94,14 @@ class MeetingAlarm < Formula
 end
 ```
 
-The service runs the launcher bundle with the interpreter as its argument, so
-macOS still attributes the Calendar request to the signed bundle. Every path
-uses `opt_libexec`, which does not change when the Cellar version does.
+Every path uses `opt_libexec`, which does not change when the Cellar version
+does. The service runs the bundle executable directly, so macOS attributes the
+Calendar request to the signed bundle.
 
 ## Also open
 
-- calendar/main.swift:155 drops an event whose `startDate` or `endDate` is nil.
-  The Python side alarms on fields it cannot read, and `FailSafeTests` pins
-  that, so the guard removes the case before it reaches the fail-safe.
-- calendar/main.swift:146 returns early when the calendar list is empty. If the
-  reason is that an empty array makes `predicateForEvents` match every calendar,
-  that deserves a comment. Confirm before writing one.
-- Porting meeting_alarm.py to Swift ends the interpreter question and leaves one
-  signed bundle. Apple ships python3 as a Command Line Tools component, not a
-  platform API.
+- Sandboxing and `SMAppService`, if this ever goes to the App Store. The App
+  Store forbids writing `~/Library/LaunchAgents`, so `install.sh` and both
+  plists would become a login item the app registers for itself. That also
+  retires the cdhash problem, since App Store signing keys the Calendar grant
+  to a Team ID.

@@ -5,6 +5,7 @@
   "message": "Meeting starting",
   "volume": 75,
   "speak": true,
+  "break_mute": true,
   "sound": "/System/Library/PrivateFrameworks/ToneLibrary.framework/Versions/A/Resources/Ringtones/Silk.m4r",
   "fallback_sound": "/System/Library/Sounds/Sosumi.aiff",
   "include_calendars": [],

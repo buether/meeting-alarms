@@ -1,2 +1,6 @@
 #!/bin/bash
-exec "${PYTHON:-python3}" "$(cd "$(dirname "$0")/.." && pwd)/meeting_alarm.py" "$@"
+# Runs the bundled binary so macOS attributes Calendar access to the app bundle.
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+BIN="$REPO/build/MeetingAlarm.app/Contents/MacOS/meeting-alarm"
+[ -x "$BIN" ] || { echo "not built yet: run $REPO/install.sh" >&2; exit 1; }
+exec "$BIN" "$@"

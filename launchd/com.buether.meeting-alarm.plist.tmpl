@@ -6,9 +6,7 @@
   <string>com.buether.meeting-alarm</string>
   <key>ProgramArguments</key>
   <array>
-    <string>@REPO@/build/MeetingAlarm.app/Contents/MacOS/meeting-alarm-launcher</string>
-    <string>@PYTHON@</string>
-    <string>@REPO@/meeting_alarm.py</string>
+    <string>@REPO@/build/MeetingAlarm.app/Contents/MacOS/meeting-alarm</string>
     <string>poll</string>
   </array>
   <key>StartInterval</key>
@@ -21,11 +19,6 @@
   <string>Aqua</string>
   <key>AbandonProcessGroup</key>
   <true/>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-  </dict>
   <key>StandardOutPath</key>
   <string>@HOME@/Library/Logs/meeting-alarm/launchd.log</string>
   <key>StandardErrorPath</key>

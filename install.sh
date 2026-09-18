@@ -1,49 +1,45 @@
 #!/bin/bash
-# Builds the signed launcher bundle, renders the LaunchAgent plists, and loads them.
-# Safe to re-run; it only rebuilds the bundle when launcher sources changed.
+# Builds the signed app bundle, renders the LaunchAgent plists, and loads them.
+# Safe to re-run; it only rebuilds the bundle when the sources changed.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-PYTHON="$(command -v "${PYTHON:-python3}" || true)"
-LABEL=com.buether.meeting-alarm
+LABEL="${MEETING_ALARM_LABEL:-com.buether.meeting-alarm}"
 APP="$REPO/build/MeetingAlarm.app"
-BIN="$APP/Contents/MacOS/meeting-alarm-launcher"
+BIN="$APP/Contents/MacOS/meeting-alarm"
 AGENTS="$HOME/Library/LaunchAgents"
 LOGS="$HOME/Library/Logs/meeting-alarm"
 DOMAIN="gui/$(id -u)"
+TARGET="$(uname -m)-apple-macos14.0"
 
 [ -f "$REPO/config.json" ] || cp "$REPO/config.example.json" "$REPO/config.json"
-[ -n "$PYTHON" ] || { echo "python3 not found on PATH (set PYTHON=/path/to/python3)"; exit 1; }
-for tool in cc swiftc; do
-  command -v "$tool" >/dev/null || { echo "$tool is missing: xcode-select --install"; exit 1; }
-done
+command -v swiftc >/dev/null || { echo "swiftc is missing: xcode-select --install"; exit 1; }
 
-CALENDAR="$APP/Contents/MacOS/meeting-alarm-calendar"
-if [ ! -x "$BIN" ] || [ ! -x "$CALENDAR" ] || \
-   [ "$REPO/launcher/launcher.c" -nt "$BIN" ] || \
-   [ "$REPO/calendar/main.swift" -nt "$CALENDAR" ] || \
-   [ "$REPO/launcher/Info.plist" -nt "$APP/Contents/Info.plist" ]; then
+needs_build() {
+  [ -x "$BIN" ] || return 0
+  [ "$REPO/app/Info.plist" -nt "$APP/Contents/Info.plist" ] && return 0
+  for source in "$REPO"/src/*.swift; do
+    [ "$source" -nt "$BIN" ] && return 0
+  done
+  return 1
+}
+
+if needs_build; then
   mkdir -p "$APP/Contents/MacOS"
-  cc -O2 -Wall -o "$BIN" "$REPO/launcher/launcher.c"
-  swiftc -O -suppress-warnings -o "$CALENDAR.new" "$REPO/calendar/main.swift"
-  mv -f "$CALENDAR.new" "$CALENDAR"
-  cp "$REPO/launcher/Info.plist" "$APP/Contents/Info.plist"
+  swiftc -target "$TARGET" -O -suppress-warnings -o "$BIN.new" "$REPO"/src/*.swift
+  mv -f "$BIN.new" "$BIN"
+  cp "$REPO/app/Info.plist" "$APP/Contents/Info.plist"
+  # Ad-hoc is enough because nothing here was downloaded, so nothing is
+  # quarantined. It does mean the Calendar grant is keyed to this build's
+  # cdhash and a rebuild asks again.
   codesign --force --sign - "$APP"
-  echo "Built launcher bundle. macOS will ask once for Calendar access for 'Meeting Alarm'."
-fi
-
-DIALOG="$REPO/build/meeting-alarm-dialog"
-if [ ! -x "$DIALOG" ] || [ "$REPO/dialog/main.swift" -nt "$DIALOG" ]; then
-  mkdir -p "$REPO/build"
-  swiftc -O -suppress-warnings -o "$DIALOG.new" "$REPO/dialog/main.swift"
-  mv -f "$DIALOG.new" "$DIALOG"
-  echo "Built alarm window."
+  echo "Built MeetingAlarm.app. macOS will ask once for Calendar access for 'Meeting Alarm'."
 fi
 
 mkdir -p "$AGENTS" "$LOGS"
 for tmpl in "$REPO"/launchd/*.plist.tmpl; do
   name="$(basename "$tmpl" .tmpl)"
-  sed -e "s|@REPO@|$REPO|g" -e "s|@HOME@|$HOME|g" -e "s|@PYTHON@|$PYTHON|g" "$tmpl" > "$AGENTS/$name"
+  sed -e "s|@REPO@|$REPO|g" -e "s|@HOME@|$HOME|g" "$tmpl" > "$AGENTS/$name"
   plutil -lint -s "$AGENTS/$name"
 done
 

@@ -9,7 +9,7 @@
   <key>CFBundleDisplayName</key>
   <string>Meeting Alarm</string>
   <key>CFBundleExecutable</key>
-  <string>meeting-alarm-launcher</string>
+  <string>meeting-alarm</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleVersion</key>

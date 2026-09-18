@@ -1,19 +1,27 @@
 import AppKit
 
-// usage: meeting-alarm-dialog <headline> <detail> <timeout-seconds> [meeting-url]
-// Exits 0 when Dismiss or Join is clicked, 2 when the timeout elapses first.
-let arguments = CommandLine.arguments
-let headline = arguments.count > 1 ? arguments[1] : "Meeting starting"
-let detail = arguments.count > 2 ? arguments[2] : ""
-let timeout = arguments.count > 3 ? (Double(arguments[3]) ?? 0) : 0
-let meetingURL = arguments.count > 4 ? arguments[4] : ""
+enum AlarmOutcome: String {
+    case dismissed
+    case joined
+    case gaveUp = "gave_up"
+}
 
-final class AlarmWindow: NSObject, NSApplicationDelegate {
+/// The alarm window. Used to be a separate binary the poller spawned and read an
+/// exit code from; now it just calls back.
+final class AlarmWindow {
     private var window: NSWindow?
+    private let onFinish: (AlarmOutcome) -> Void
+    private let meetingURL: String
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    init(meetingURL: String, onFinish: @escaping (AlarmOutcome) -> Void) {
+        self.meetingURL = meetingURL
+        self.onFinish = onFinish
+    }
+
+    func show(headline: String, detail: String) {
         let bounds = NSRect(x: 0, y: 0, width: 560, height: 260)
-        let window = NSWindow(contentRect: bounds, styleMask: [.titled], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: bounds, styleMask: [.titled],
+                              backing: .buffered, defer: false)
         window.title = "Meeting Alarm"
         // Rings over full-screen apps, on whatever Space is in front.
         window.level = .screenSaver
@@ -60,26 +68,38 @@ final class AlarmWindow: NSObject, NSApplicationDelegate {
         window.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
-
-        if timeout > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { exit(2) }
-        }
     }
 
-    @objc private func dismiss() {
-        exit(0)
+    func close() {
+        window?.orderOut(nil)
+        window = nil
     }
+
+    @objc private func dismiss() { onFinish(.dismissed) }
 
     @objc private func join() {
         if let url = URL(string: meetingURL) {
             NSWorkspace.shared.open(url)
         }
-        exit(0)
+        onFinish(.joined)
     }
 }
 
-let app = NSApplication.shared
-app.setActivationPolicy(.accessory)
-let delegate = AlarmWindow()
-app.delegate = delegate
-app.run()
+/// Plain alert with no sound, for calendar failures and the watchdog.
+func showNotice(message: String, title: String, seconds: Double) {
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = message
+    alert.alertStyle = .critical
+    alert.addButton(withTitle: "OK")
+    if seconds > 0 {
+        // runModal spins the run loop in .modalPanel, which a plain main-queue
+        // dispatch does not reach.
+        let timer = Timer(timeInterval: seconds, repeats: false) { _ in NSApp.abortModal() }
+        RunLoop.current.add(timer, forMode: .modalPanel)
+        RunLoop.current.add(timer, forMode: .common)
+    }
+    NSApp.activate(ignoringOtherApps: true)
+    alert.window.level = .floating
+    _ = alert.runModal()
+}
