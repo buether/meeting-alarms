@@ -3,15 +3,19 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-LABEL="${MEETING_ALARM_LABEL:-com.buether.meeting-alarm}"
-AGENTS="$HOME/Library/LaunchAgents"
-DOMAIN="gui/$(id -u)"
+BIN="$REPO/build/MeetingAlarm.app/Contents/MacOS/meeting-alarm"
 
-for label in "$LABEL" "$LABEL.watchdog"; do
-  launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
-  rm -f "$AGENTS/$label.plist"
-done
+if [ -x "$BIN" ]; then
+  "$BIN" uninstall
+else
+  # The build is already gone, so unload by label instead.
+  LABEL="${MEETING_ALARM_LABEL:-com.buether.meeting-alarm}"
+  for label in "$LABEL" "$LABEL.watchdog"; do
+    launchctl bootout "gui/$(id -u)/$label" 2>/dev/null
+    rm -f "$HOME/Library/LaunchAgents/$label.plist"
+  done
+  echo "Unloaded and removed both LaunchAgents."
+fi
+
 rm -rf "$REPO/build"
-echo "Removed LaunchAgents and build/."
-echo "Left in place: ~/Library/Application Support/meeting-alarm and ~/Library/Logs/meeting-alarm"
-echo "To forget the Calendar grant: tccutil reset Calendar $LABEL"
+echo "Removed build/."

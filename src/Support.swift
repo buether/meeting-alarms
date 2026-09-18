@@ -124,6 +124,27 @@ struct Config {
         return cfg
     }
 
+    /// The user-facing settings, written from the defaults so a seeded config
+    /// cannot drift from what the binary actually does. The failure-reporting
+    /// keys are deliberately left out; they are documented, not everyday.
+    var seedJSON: Data? {
+        let raw: [String: Any] = [
+            "lead_seconds": leadSeconds,
+            "poll_seconds": pollSeconds,
+            "max_alarm_seconds": maxAlarmSeconds,
+            "message": message,
+            "volume": volume,
+            "speak": speak,
+            "break_mute": breakMute,
+            "sound": sound,
+            "fallback_sound": fallbackSound,
+            "include_calendars": includeCalendars,
+            "expected_source": expectedSource ?? NSNull(),
+        ]
+        return try? JSONSerialization.data(
+            withJSONObject: raw, options: [.prettyPrinted, .sortedKeys])
+    }
+
     var resolvedSound: String? {
         for candidate in [sound, fallbackSound] where !candidate.isEmpty {
             if FileManager.default.fileExists(atPath: candidate) { return candidate }

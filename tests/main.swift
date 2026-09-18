@@ -169,6 +169,25 @@ check(volumeRestore(saved: wasMuted, current: VolumeSetting(level: 75, muted: tr
 check(volumeRestore(saved: wasMuted, current: nil, alarmLevel: 75) == nil,
       "a device with no software volume is left alone")
 
+// MARK: - Agent paths
+// A Cellar path carries the version, which brew upgrade changes out from under
+// a LaunchAgent; opt is the stable symlink to whatever version is current.
+
+equal(stablePath(URL(fileURLWithPath:
+        "/opt/homebrew/Cellar/meeting-alarm/1.0.0/libexec/MeetingAlarm.app/Contents/MacOS/meeting-alarm")).path,
+      "/opt/homebrew/opt/meeting-alarm/libexec/MeetingAlarm.app/Contents/MacOS/meeting-alarm",
+      "a Cellar path is rewritten through opt")
+equal(stablePath(URL(fileURLWithPath:
+        "/usr/local/Cellar/meeting-alarm/2.3.1/libexec/MeetingAlarm.app/Contents/MacOS/meeting-alarm")).path,
+      "/usr/local/opt/meeting-alarm/libexec/MeetingAlarm.app/Contents/MacOS/meeting-alarm",
+      "the Intel prefix works too")
+equal(stablePath(URL(fileURLWithPath:
+        "/Users/someone/src/meeting-alarms/build/MeetingAlarm.app/Contents/MacOS/meeting-alarm")).path,
+      "/Users/someone/src/meeting-alarms/build/MeetingAlarm.app/Contents/MacOS/meeting-alarm",
+      "a checkout path is left alone")
+equal(stablePath(URL(fileURLWithPath: "/tmp/Cellar")).path, "/tmp/Cellar",
+      "a path that ends at Cellar is left alone")
+
 // MARK: - Report
 
 if failures.isEmpty {

@@ -82,18 +82,26 @@ bin/meeting-alarm status            poller health, recent alarms, and a verdict 
 bin/meeting-alarm poll --dry-run    what this minute's poll would do, without ringing anything
 bin/meeting-alarm test              ring a test alarm
 bin/meeting-alarm calendars         calendar titles and account names EventKit can see
-./install.sh                        rebuild and reload after changing the code or poll_seconds
-./uninstall.sh                      remove the background jobs; logs and history stay
+bin/meeting-alarm install           write and load the two LaunchAgents for wherever this binary lives
+bin/meeting-alarm uninstall         unload and remove them; logs and history stay
+./install.sh                        rebuild, then install; run after changing the code or poll_seconds
+./uninstall.sh                      uninstall, then delete build/
 ```
 
 `poll.log`, `alarm.log` and `launchd.log` are in `~/Library/Logs/meeting-alarm/`.
 
 ## Settings
 
-`install.sh` creates `config.json` from `config.example.json` on first run.
-`config.json` is yours and is not committed. Leave a key out and the default
-applies. Edits take effect at the next poll, within a minute; `poll_seconds`
-is the exception and needs `./install.sh`.
+`install.sh` writes a config file on first run at
+`~/Library/Application Support/meeting-alarm/config.json`, outside the install
+directory so an upgrade cannot delete it. `config.example.json` shows the same
+keys. Leave a key out and the default applies. Edits take effect at the next
+poll, within a minute; `poll_seconds` is the exception and needs
+`./install.sh`.
+
+Three places are checked, first hit wins: `$MEETING_ALARM_CONFIG`, then that
+Application Support path, then a `config.json` in a checkout — which is handy
+while working on the code and is not committed.
 
 | Key | Default | What it does |
 | --- | --- | --- |

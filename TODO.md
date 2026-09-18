@@ -22,13 +22,6 @@ both LaunchAgents.
 
 ## To do
 
-- [ ] `meeting-alarm install` and `meeting-alarm uninstall` subcommands, taking
-      over the launchd half of install.sh and uninstall.sh, which keep the build
-      and call them. They render both plists into `~/Library/LaunchAgents` with
-      whatever path the running binary is at, so the same code serves a checkout
-      and a Cellar install. `install` also seeds
-      `~/Library/Application Support/meeting-alarm/config.json` from
-      `config.example.json`, which nothing does under a formula.
 - [ ] Decide what `brew uninstall` leaves behind. It removes the Cellar but not
       LaunchAgents pointing into it, which then fail every minute. A `caveat`
       telling people to run `meeting-alarm uninstall` first is the cheap answer.
@@ -41,6 +34,12 @@ both LaunchAgents.
 - [ ] Tag v1.0.0 and take the sha256 of the GitHub tarball.
 - [ ] Create the tap repository, `homebrew-tap`, holding the formula at
       `Formula/meeting-alarm.rb`.
+
+The `install` subcommand rewrites a Cellar path through `opt` before it goes in
+a plist, so `brew upgrade` does not leave an agent pointing at a version
+directory that no longer exists. It also injects `MEETING_ALARM_LABEL` into the
+poller when the label is not the default, so a relabelled install's own `status`
+and `test` look at the right job.
 
 ## Formula draft
 
@@ -63,7 +62,6 @@ class MeetingAlarm < Formula
            "-o", app/"Contents/MacOS/meeting-alarm", *Dir["src/*.swift"]
     (app/"Contents").install "app/Info.plist"
     system "codesign", "--force", "--sign", "-", app
-    pkgshare.install "config.example.json"
 
     (bin/"meeting-alarm").write <<~BASH
       #!/bin/bash

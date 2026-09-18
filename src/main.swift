@@ -11,6 +11,8 @@ import Foundation
 //   status    Poller health, recent alarms, and upcoming candidates.
 //   calendars Calendar titles and account names EventKit can see.
 //   watchdog  Warn if the poller has not succeeded recently.
+//   install   Write and load both LaunchAgents for wherever this binary is.
+//   uninstall Unload and remove them.
 
 let usage = """
 usage: meeting-alarm <command> [options]
@@ -21,6 +23,8 @@ usage: meeting-alarm <command> [options]
   status
   calendars
   watchdog [--max-age SECONDS] [--wait SECONDS]
+  install
+  uninstall
 """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -95,6 +99,12 @@ case "status":
 
 case "calendars":
     exit(listCalendars())
+
+case "install":
+    exit(installAgents())
+
+case "uninstall":
+    exit(uninstallAgents())
 
 case "watchdog":
     exit(watchdog(
