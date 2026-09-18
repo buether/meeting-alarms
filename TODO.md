@@ -11,44 +11,36 @@ until it is notarized. Compiling on the user's machine produces binaries with no
 quarantine attribute, so `codesign --sign -` is enough.
 
 **No interpreter.** The Swift port removed the Python half of the install, so
-`depends_on xcode: :clt` is now only there for `swiftc`. Nothing in the formula
-depends on a language runtime that Apple ships as a Command Line Tools
-component rather than a platform API.
+`depends_on xcode: :clt` is now only there for `swiftc`.
 
-**Ad-hoc signing, for now.** Every upgrade rebuilds the binary, changes its
-cdhash, and costs the user the Calendar grant. A Developer ID certificate would
-replace the cdhash requirement with a Team ID one that survives upgrades; until
-then the `tccutil reset` in the README is the fix.
+**The agents are ours, not `brew services`.** A formula gets one service block
+and Homebrew's cron parser takes a single value per field, so the watchdog's
+10:05 and 14:05 cannot be expressed. Running both a `service do` block and our
+own agents would put two pollers on a 60-second interval and two windows on
+screen for one meeting. So: no `service do`, and `meeting-alarm install` owns
+both LaunchAgents.
 
 ## To do
 
-- [ ] Add a `meeting-alarm install` subcommand that renders and loads both
-      agents, taking over the launchd half of install.sh; install.sh keeps the
-      build and calls it. A formula gets one service block, and Homebrew's cron
-      parser takes a single value per field, so the watchdog's 10:05 and 14:05
-      cannot be a second brew service.
-- [ ] Exercise `status`, `test` and `alarm` from a Cellar install. The unit
-      tests cover selection logic only; nothing has run the EventKit, CoreAudio
-      or AppKit paths against `opt_libexec` paths.
+- [ ] `meeting-alarm install` and `meeting-alarm uninstall` subcommands, taking
+      over the launchd half of install.sh and uninstall.sh, which keep the build
+      and call them. They render both plists into `~/Library/LaunchAgents` with
+      whatever path the running binary is at, so the same code serves a checkout
+      and a Cellar install. `install` also seeds
+      `~/Library/Application Support/meeting-alarm/config.json` from
+      `config.example.json`, which nothing does under a formula.
+- [ ] Decide what `brew uninstall` leaves behind. It removes the Cellar but not
+      LaunchAgents pointing into it, which then fail every minute. A `caveat`
+      telling people to run `meeting-alarm uninstall` first is the cheap answer.
+- [ ] Verify the build under Homebrew, not just in a checkout: `swiftc` through
+      superenv's filtered PATH, and `codesign` inside the build sandbox.
+- [ ] Verify the Calendar grant survives the bundle moving to a Cellar path.
+      Two local rebuilds kept it, which is weak evidence — the cdhash changed
+      both times and TCC did not re-prompt, so the mechanism is not yet
+      understood well enough to promise either outcome in the README.
 - [ ] Tag v1.0.0 and take the sha256 of the GitHub tarball.
 - [ ] Create the tap repository, `homebrew-tap`, holding the formula at
       `Formula/meeting-alarm.rb`.
-
-## Closed by the Swift port
-
-- Config no longer sits next to the binary. `Paths.configPath` resolves
-  `$MEETING_ALARM_CONFIG`, then `~/Library/Application Support/meeting-alarm/config.json`,
-  then the repository copy, then the built-in defaults.
-- The launchd label is no longer hardcoded. `$MEETING_ALARM_LABEL` overrides it,
-  so `test` and `status` can be pointed at `homebrew.mxcl.meeting-alarm`.
-- `launcher.c` is gone. It existed to keep launchd's job process on the signed
-  bundle while the real work happened in a Python child; the bundle executable
-  now does the work itself.
-- An event with a nil `startDate` or `endDate` is no longer dropped before the
-  fail-safe sees it.
-- The empty-calendar-list guard has a comment: an empty array would mean "every
-  calendar" to `predicateForEvents`, the opposite of what `include_calendars`
-  matching nothing should produce.
 
 ## Formula draft
 
@@ -79,13 +71,14 @@ class MeetingAlarm < Formula
     BASH
   end
 
-  service do
-    run [opt_libexec/"MeetingAlarm.app/Contents/MacOS/meeting-alarm", "poll"]
-    run_type :interval
-    interval 60
-    log_path var/"log/meeting-alarm.log"
-    error_log_path var/"log/meeting-alarm.log"
-    environment_variables MEETING_ALARM_LABEL: "homebrew.mxcl.meeting-alarm"
+  def caveats
+    <<~TEXT
+      Load the background jobs with:
+        meeting-alarm install
+
+      Run `meeting-alarm uninstall` before `brew uninstall`, or the LaunchAgents
+      will keep firing at a path that no longer exists.
+    TEXT
   end
 
   test do
@@ -95,13 +88,16 @@ end
 ```
 
 Every path uses `opt_libexec`, which does not change when the Cellar version
-does. The service runs the bundle executable directly, so macOS attributes the
+does. The agents run the bundle executable directly, so macOS attributes the
 Calendar request to the signed bundle.
 
 ## Also open
 
-- Sandboxing and `SMAppService`, if this ever goes to the App Store. The App
+- **A Developer ID certificate.** Ad-hoc signing keys the Calendar grant to a
+  cdhash that every rebuild changes. A Developer ID moves it to a Team ID that
+  survives upgrades, and would also make a cask viable. $99/yr.
+- **Sandboxing and `SMAppService`,** if this ever goes to the App Store. The App
   Store forbids writing `~/Library/LaunchAgents`, so `install.sh` and both
   plists would become a login item the app registers for itself. That also
-  retires the cdhash problem, since App Store signing keys the Calendar grant
-  to a Team ID.
+  retires the cdhash problem, since App Store signing keys the grant to a Team
+  ID.
