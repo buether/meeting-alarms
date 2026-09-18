@@ -1,6 +1,6 @@
 # Homebrew packaging
 
-Ship the tool through a personal tap: `brew tap buether/tap && brew install
+Ship meeting-alarm through a personal tap: `brew tap buether/tap && brew install
 meeting-alarm`.
 
 ## Settled
@@ -8,11 +8,11 @@ meeting-alarm`.
 **A formula built from source, not a cask.** Homebrew quarantines cask
 downloads, so an ad-hoc signed `MeetingAlarm.app` would be blocked by Gatekeeper
 until it is notarized. Compiling on the user's machine produces binaries with no
-quarantine attribute, where `codesign --sign -` is enough.
+quarantine attribute, so `codesign --sign -` is enough.
 
 **`/usr/bin/python3`, not a Homebrew Python.** The Command Line Tools ship
 Python 3.9.6 as of macOS 26.6. The test suite passes on it and both Python files
-parse on it, so the formula needs no Python dependency at all: `depends_on xcode:
+parse on it, so the formula needs no Python dependency: `depends_on xcode:
 :clt` already covers `cc`, `swiftc` and the interpreter. The cost is no 3.10+
 syntax, ever. Run the suite under both interpreters before a release.
 
