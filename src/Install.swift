@@ -12,6 +12,48 @@ func stablePath(_ url: URL) -> URL {
     return URL(fileURLWithPath: NSString.path(withComponents: rebuilt))
 }
 
+/// Single-quotes a string for the generated shell script.
+func shellQuoted(_ value: String) -> String {
+    "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+}
+
+/// The script both agents run. It hands off to the binary, or takes the agents
+/// down when the binary is gone.
+///
+/// `brew uninstall` deletes the Cellar and has no hook to run anything on the
+/// way out — uninstall directives are a Cask feature, and a formula gets none —
+/// so the agents would keep firing every minute at a path that no longer
+/// exists. This is the same story for a deleted checkout.
+///
+/// exec replaces this shell with the bundle executable, so launchd's job
+/// process ends up being the signed bundle and macOS still attributes the
+/// Calendar request to it.
+func agentRunnerScript(executable: String, label: String) -> String {
+    """
+    #!/bin/bash
+    # Written by `meeting-alarm install`. Do not edit; reinstalling overwrites it.
+    BIN=\(shellQuoted(executable))
+    [ -x "$BIN" ] && exec "$BIN" "$@"
+
+    # The binary is gone. Take the agents down and leave config, history and
+    # logs alone.
+    LABEL=\(shellQuoted(label))
+    AGENTS="$HOME/Library/LaunchAgents"
+    # Remove the files before booting out, because booting out this job kills
+    # this script mid-run.
+    rm -f "$AGENTS/$LABEL.plist" "$AGENTS/$LABEL.watchdog.plist" "$0"
+    # Booting out our own job kills this script, so that one goes last.
+    case "$1" in
+      watchdog) SELF="$LABEL.watchdog"; OTHER="$LABEL" ;;
+      *)        SELF="$LABEL";          OTHER="$LABEL.watchdog" ;;
+    esac
+    launchctl bootout "gui/$(id -u)/$OTHER" 2>/dev/null
+    launchctl bootout "gui/$(id -u)/$SELF" 2>/dev/null
+    exit 0
+
+    """
+}
+
 enum Agents {
     static var pollerLabel: String { Paths.label }
     static var watchdogLabel: String { "\(Paths.label).watchdog" }
@@ -25,13 +67,31 @@ enum Agents {
         directory.appendingPathComponent("\(label).plist")
     }
 
-    /// Both agents run the bundle executable directly, so macOS attributes the
-    /// Calendar request to the signed bundle rather than to a shell.
+    /// Lives outside the install directory so it survives whatever removed the
+    /// binary, and can clean up after it.
+    static var runnerPath: URL {
+        Paths.stateDir.appendingPathComponent("run-agent.sh")
+    }
+
+    @discardableResult
+    static func writeRunner(executable: URL) -> Bool {
+        let script = agentRunnerScript(executable: executable.path, label: Paths.label)
+        try? FileManager.default.createDirectory(at: Paths.stateDir, withIntermediateDirectories: true)
+        guard (try? script.write(to: runnerPath, atomically: true, encoding: .utf8)) != nil,
+              (try? FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                                      ofItemAtPath: runnerPath.path)) != nil
+        else { return false }
+        return true
+    }
+
+    /// Both agents run `run-agent.sh`, which execs the bundle executable. The
+    /// exec keeps the job process on the signed bundle, and the script is what
+    /// remains to clean up if the binary is ever removed.
     static func definitions(executable: URL, cfg: Config) -> [(label: String, plist: [String: Any])] {
         let log = Paths.logDir.appendingPathComponent("launchd.log").path
         var poller: [String: Any] = [
             "Label": pollerLabel,
-            "ProgramArguments": [executable.path, "poll"],
+            "ProgramArguments": [runnerPath.path, "poll"],
             "StartInterval": max(1, Int(cfg.pollSeconds)),
             "RunAtLoad": true,
             "ProcessType": "Interactive",
@@ -42,7 +102,7 @@ enum Agents {
         ]
         let watchdog: [String: Any] = [
             "Label": watchdogLabel,
-            "ProgramArguments": [executable.path, "watchdog"],
+            "ProgramArguments": [runnerPath.path, "watchdog"],
             "StartCalendarInterval": [
                 ["Hour": 10, "Minute": 5],
                 ["Hour": 14, "Minute": 5],
@@ -79,6 +139,10 @@ func installAgents() -> Int32 {
     }
     let cfg = Config.load()
     seedConfig()
+    guard Agents.writeRunner(executable: executable) else {
+        printErr("could not write \(Agents.runnerPath.path)")
+        return 1
+    }
 
     for directory in [Agents.directory, Paths.logDir] {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -117,6 +181,7 @@ func uninstallAgents() -> Int32 {
         _ = launchctl(["bootout", "\(domain)/\(label)"])
         try? FileManager.default.removeItem(at: Agents.plistPath(label))
     }
+    try? FileManager.default.removeItem(at: Agents.runnerPath)
     print("Unloaded and removed both LaunchAgents.")
     print("Left in place: \(Paths.stateDir.path) and \(Paths.logDir.path)")
     print("To forget the Calendar grant: tccutil reset Calendar \(Paths.label)")

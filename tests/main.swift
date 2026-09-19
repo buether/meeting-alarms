@@ -188,6 +188,34 @@ equal(stablePath(URL(fileURLWithPath:
 equal(stablePath(URL(fileURLWithPath: "/tmp/Cellar")).path, "/tmp/Cellar",
       "a path that ends at Cellar is left alone")
 
+// MARK: - Agent runner script
+
+equal(shellQuoted("/opt/homebrew/opt/meeting-alarm/libexec/x"),
+      "'/opt/homebrew/opt/meeting-alarm/libexec/x'", "an ordinary path is quoted")
+equal(shellQuoted("/Users/o'brien/src/x"), "'/Users/o'\\''brien/src/x'",
+      "an apostrophe in a path is escaped")
+
+let runner = agentRunnerScript(executable: "/opt/homebrew/opt/meeting-alarm/libexec/bin",
+                               label: "homebrew.mxcl.meeting-alarm")
+check(runner.hasPrefix("#!/bin/bash\n"), "the runner is a bash script")
+check(runner.contains("BIN='/opt/homebrew/opt/meeting-alarm/libexec/bin'"),
+      "the runner quotes the binary path")
+check(runner.contains("[ -x \"$BIN\" ] && exec \"$BIN\" \"$@\""),
+      "the runner execs the binary when it is there")
+check(runner.contains("LABEL='homebrew.mxcl.meeting-alarm'"), "the runner quotes the label")
+check(runner.contains("$AGENTS/$LABEL.plist") && runner.contains("$AGENTS/$LABEL.watchdog.plist"),
+      "the runner removes both plists")
+check(runner.contains("\"$0\""), "the runner removes itself")
+check(runner.range(of: "rm -f")!.lowerBound < runner.range(of: "launchctl bootout")!.lowerBound,
+      "files go before bootout, which kills the script")
+// Booting out our own job kills the script, so the other job has to go first
+// or it is left loaded with no plist behind it.
+check(runner.range(of: "$OTHER")!.lowerBound < runner.range(of: "$SELF\"")!.lowerBound,
+      "the other job is booted out before this one")
+check(runner.contains("watchdog) SELF=\"$LABEL.watchdog\"; OTHER=\"$LABEL\"") ||
+      runner.contains("watchdog) SELF=\"$LABEL.watchdog\""),
+      "the script knows which job it is running as")
+
 // MARK: - Report
 
 if failures.isEmpty {

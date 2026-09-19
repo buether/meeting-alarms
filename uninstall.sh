@@ -14,6 +14,7 @@ else
     launchctl bootout "gui/$(id -u)/$label" 2>/dev/null
     rm -f "$HOME/Library/LaunchAgents/$label.plist"
   done
+  rm -f "$HOME/Library/Application Support/meeting-alarm/run-agent.sh"
   echo "Unloaded and removed both LaunchAgents."
 fi
 

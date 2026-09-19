@@ -196,6 +196,14 @@ Two meetings a minute apart put two alarm windows on screen. Only the one
 holding `alarm.lock` raises the volume and loops the sound, so they do not
 fight over the output device.
 
+Both agents run `run-agent.sh`, written into
+`~/Library/Application Support/meeting-alarm/` at install time. It hands off to
+the binary with `exec`, so launchd's job process ends up being the signed
+bundle. If the binary is ever gone — an uninstall, a deleted checkout — the
+script instead unloads both agents, deletes both plists and deletes itself,
+rather than leaving launchd firing every minute at a path that no longer
+exists. Your config, alarm history and logs are left alone.
+
 Run `./run-tests.sh` to build and run the unit tests. They cover the selection
 logic, so they need no calendar, no permissions and no window server.
 

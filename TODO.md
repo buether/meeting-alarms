@@ -13,6 +13,17 @@ quarantine attribute, so `codesign --sign -` is enough.
 **No interpreter.** The Swift port removed the Python half of the install, so
 `depends_on xcode: :clt` is now only there for `swiftc`.
 
+**The agents clean up after themselves.** A formula has no uninstall hook —
+`uninstall_preflight` and `uninstall_postflight` are Cask stanzas, and
+`brew uninstall` touches no launchd state at all — so `brew uninstall` would
+leave two agents firing every minute at a deleted Cellar path. Both agents
+therefore run `run-agent.sh`, written into Application Support where it
+outlives whatever removed the binary. It execs the binary when it is there and
+otherwise unloads both agents, deletes both plists and deletes itself, keeping
+config, history and logs. The exec keeps launchd's job process on the signed
+bundle, which is what the Calendar grant is attached to. This covers a deleted
+checkout too.
+
 **The agents are ours, not `brew services`.** A formula gets one service block
 and Homebrew's cron parser takes a single value per field, so the watchdog's
 10:05 and 14:05 cannot be expressed. Running both a `service do` block and our
@@ -22,9 +33,6 @@ both LaunchAgents.
 
 ## To do
 
-- [ ] Decide what `brew uninstall` leaves behind. It removes the Cellar but not
-      LaunchAgents pointing into it, which then fail every minute. A `caveat`
-      telling people to run `meeting-alarm uninstall` first is the cheap answer.
 - [ ] Verify the build under Homebrew, not just in a checkout: `swiftc` through
       superenv's filtered PATH, and `codesign` inside the build sandbox.
 - [ ] Verify the Calendar grant survives the bundle moving to a Cellar path.
@@ -74,8 +82,8 @@ class MeetingAlarm < Formula
       Load the background jobs with:
         meeting-alarm install
 
-      Run `meeting-alarm uninstall` before `brew uninstall`, or the LaunchAgents
-      will keep firing at a path that no longer exists.
+      They remove themselves within a minute of `brew uninstall`. Config,
+      history and logs under ~/Library are left alone.
     TEXT
   end
 
