@@ -1,7 +1,8 @@
 # Homebrew packaging
 
-Ship meeting-alarm through a personal tap: `brew tap buether/tap && brew install
-meeting-alarm`.
+Shipped through a personal tap, `buether/homebrew-tap`:
+`brew install buether/tap/meeting-alarm && meeting-alarm install`. The formula
+there is the source of truth; the draft below is a copy for reference.
 
 ## Settled
 
@@ -39,9 +40,8 @@ both LaunchAgents.
       Two local rebuilds kept it, which is weak evidence — the cdhash changed
       both times and TCC did not re-prompt, so the mechanism is not yet
       understood well enough to promise either outcome in the README.
-- [ ] Tag v1.0.0 and take the sha256 of the GitHub tarball.
-- [ ] Create the tap repository, `homebrew-tap`, holding the formula at
-      `Formula/meeting-alarm.rb`.
+- [ ] Run `brew audit --strict --online buether/tap/meeting-alarm` and
+      `brew test` once the formula has been installed.
 
 The `install` subcommand rewrites a Cellar path through `opt` before it goes in
 a plist, so `brew upgrade` does not leave an agent pointing at a version

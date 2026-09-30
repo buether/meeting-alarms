@@ -15,14 +15,29 @@ of something, and is gone by the time you surface.
 
 ## Install
 
+```
+brew install buether/tap/meeting-alarm && meeting-alarm install
+```
+
 Needs macOS 14 or later and the Xcode command line tools, which supply the
-`swiftc` the installer uses:
+`swiftc` the formula builds with. If brew says they are missing, run
+`xcode-select --install` first.
+
+macOS asks once whether **Meeting Alarm** may read your calendar. Click Allow.
+Then hear it:
 
 ```
-xcode-select --install
+meeting-alarm test
 ```
 
-Then:
+That test goes through launchd and the signed bundle, the same path a real
+alarm takes.
+
+To remove it, `brew uninstall meeting-alarm`. The background jobs notice within
+a minute and remove themselves; your config, alarm history and logs under
+`~/Library` stay.
+
+### From a checkout
 
 ```
 git clone https://github.com/buether/meeting-alarms.git
@@ -30,18 +45,10 @@ cd meeting-alarms
 ./install.sh
 ```
 
-macOS asks once whether **Meeting Alarm** may read your calendar. Click Allow.
-Then hear it:
-
-```
-bin/meeting-alarm test
-```
-
-That test goes through launchd and the signed bundle, the same path a real
-alarm takes.
-
-Keep the clone where it is. The launchd job runs the code from this directory,
-so moving or deleting the clone stops the alarms.
+Commands are then `bin/meeting-alarm …` instead of `meeting-alarm …`. The jobs
+run the code from the clone, so moving or deleting it stops the alarms — and
+the jobs then remove themselves, as after an uninstall. `./uninstall.sh` takes
+them down deliberately and deletes `build/`.
 
 ### Make a Google calendar sync fast enough
 
@@ -72,32 +79,32 @@ A meeting still in progress rings however late your Mac woke up; one that has
 already ended does not. An event with a field it cannot read rings anyway,
 because a missed meeting costs more than a spurious alarm.
 
-`bin/meeting-alarm status` applies those rules to the next eight hours and
+`meeting-alarm status` applies those rules to the next eight hours and
 prints a verdict and a reason for every event.
 
 ## Commands
 
 ```
-bin/meeting-alarm status            poller health, recent alarms, and a verdict per event for the next 8 hours
-bin/meeting-alarm poll --dry-run    what this minute's poll would do, without ringing anything
-bin/meeting-alarm test              ring a test alarm
-bin/meeting-alarm calendars         calendar titles and account names EventKit can see
-bin/meeting-alarm install           write and load the two LaunchAgents for wherever this binary lives
-bin/meeting-alarm uninstall         unload and remove them; logs and history stay
-./install.sh                        rebuild, then install; run after changing the code or poll_seconds
-./uninstall.sh                      uninstall, then delete build/
+meeting-alarm status                poller health, recent alarms, and a verdict per event for the next 8 hours
+meeting-alarm poll --dry-run        what this minute's poll would do, without ringing anything
+meeting-alarm test                  ring a test alarm
+meeting-alarm calendars             calendar titles and account names EventKit can see
+meeting-alarm install               write and load the two LaunchAgents for wherever this binary lives
+meeting-alarm uninstall             unload and remove them; logs and history stay
+./install.sh                        in a checkout: rebuild, then install
+./uninstall.sh                      in a checkout: uninstall, then delete build/
 ```
 
 `poll.log`, `alarm.log` and `launchd.log` are in `~/Library/Logs/meeting-alarm/`.
 
 ## Settings
 
-`install.sh` writes a config file on first run at
+`meeting-alarm install` writes a config file on first run at
 `~/Library/Application Support/meeting-alarm/config.json`, outside the install
 directory so an upgrade cannot delete it. `config.example.json` shows the same
 keys. Leave a key out and the default applies. Edits take effect at the next
 poll, within a minute; `poll_seconds` is the exception and needs
-`./install.sh`.
+`meeting-alarm install` again.
 
 Three places are checked, first hit wins: `$MEETING_ALARM_CONFIG`, then that
 Application Support path, then a `config.json` in a checkout — which is handy
@@ -120,7 +127,7 @@ while working on the code and is not committed.
 To fill in `include_calendars` or `expected_source`, list what EventKit sees:
 
 ```
-bin/meeting-alarm calendars
+meeting-alarm calendars
 ```
 
 Three keys govern how the tool reports its own failures and are absent from
@@ -143,7 +150,7 @@ works too. To hear one before you keep it, put its path in `config.json` and
 ring a ten-second alarm:
 
 ```
-bin/meeting-alarm alarm --title Test --start $(date +%s) --max-seconds 10
+meeting-alarm alarm --title     Test --start $(date +%s) --max-seconds 10
 ```
 
 ## When something goes wrong
@@ -153,7 +160,7 @@ hour a dialog says so, and a watchdog checks at 10:05 and 14:05 and complains
 if nothing has succeeded in three hours. To check for yourself:
 
 ```
-bin/meeting-alarm status
+meeting-alarm status
 ```
 
 A healthy answer has a `last successful poll` under a minute old and names a
@@ -161,8 +168,8 @@ sound file rather than `MISSING`.
 
 - **`FAILING` with "Calendar access denied".** Turn Meeting Alarm on under
   System Settings > Privacy & Security > Calendars. To get the prompt back,
-  run `tccutil reset Calendar com.buether.meeting-alarm` and `./install.sh`.
-- **`launchd: NOT LOADED`.** `./install.sh` did not finish. Run it again and
+  run `tccutil reset Calendar com.buether.meeting-alarm` and `meeting-alarm install`.
+- **`launchd: NOT LOADED`.** `meeting-alarm install` did not finish. Run it again and
   read its output.
 - **No events listed, though you have meetings.** Calendar.app has not synced
   them. Set its refresh interval, as under Install.
