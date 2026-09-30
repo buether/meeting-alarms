@@ -34,6 +34,10 @@ func agentRunnerScript(executable: String, label: String) -> String {
     # Written by `meeting-alarm install`. Do not edit; reinstalling overwrites it.
     BIN=\(shellQuoted(executable))
     [ -x "$BIN" ] && exec "$BIN" "$@"
+    # brew upgrade deletes the opt link before making the new one, so a run
+    # that lands in between sees no binary for a moment. Look again first.
+    sleep 5
+    [ -x "$BIN" ] && exec "$BIN" "$@"
 
     # The binary is gone. Take the agents down and leave config, history and
     # logs alone.
@@ -52,6 +56,21 @@ func agentRunnerScript(executable: String, label: String) -> String {
     exit 0
 
     """
+}
+
+/// The poller's schedule, as a StartCalendarInterval value.
+///
+/// Not StartInterval: launchd can put a login session's domain into
+/// on-demand-only mode and leave it there, after which it pends every
+/// StartInterval spawn and runs only what something explicitly asks for. One
+/// Mac sat like that for weeks, its hourly updaters running 17 times in 55
+/// days, and the poller never once ran on its own. Calendar-interval jobs still
+/// fire in that mode, which is how the watchdog kept running. The cost is
+/// whole minutes: poll_seconds rounds to the nearest minute, at least one.
+func pollSchedule(pollSeconds: Double) -> Any {
+    let minutes = max(1, Int((pollSeconds / 60).rounded()))
+    if minutes == 1 { return [String: Int]() }   // an empty dictionary: every minute
+    return stride(from: 0, to: 60, by: minutes).map { ["Minute": $0] }
 }
 
 enum Agents {
@@ -92,7 +111,7 @@ enum Agents {
         var poller: [String: Any] = [
             "Label": pollerLabel,
             "ProgramArguments": [runnerPath.path, "poll"],
-            "StartInterval": max(1, Int(cfg.pollSeconds)),
+            "StartCalendarInterval": pollSchedule(pollSeconds: cfg.pollSeconds),
             "RunAtLoad": true,
             "ProcessType": "Interactive",
             "LimitLoadToSessionType": "Aqua",
@@ -168,7 +187,8 @@ func installAgents() -> Int32 {
     }
     _ = launchctl(["kickstart", "-k", "\(domain)/\(Agents.pollerLabel)"])
 
-    print("Loaded \(Agents.pollerLabel) (every \(Int(cfg.pollSeconds))s) "
+    let minutes = max(1, Int((cfg.pollSeconds / 60).rounded()))
+    print("Loaded \(Agents.pollerLabel) (every \(minutes == 1 ? "minute" : "\(minutes) minutes")) "
         + "and \(Agents.watchdogLabel) (10:05, 14:05).")
     print("Running: \(executable.path)")
     print("If a Calendar access prompt for 'Meeting Alarm' appears, click Allow.")

@@ -48,6 +48,15 @@ being opened again — while the watchdog logged `stale` twice a day. Every poll
 now has a deadline (150s, `$MEETING_ALARM_POLL_DEADLINE`) after which it records
 a failure and `_exit`s, so the next poll starts and the failure notice can fire.
 
+The poller was scheduled with StartInterval, and on the development Mac that
+never fired once: launchd had the login session's domain in on-demand-only
+mode (`on-demand count = 2` in `launchctl print gui/$UID`; log line "pending
+spawn, domain in on-demand-only mode"), which pends every StartInterval spawn.
+The Mac had been up 55 days and its hourly Google and Zoom updaters had run 17
+times. Every poll ever logged was an install or a kickstart. StartCalendarInterval
+jobs still fire in that mode, so the poller now runs every minute by calendar.
+When checking something like this, zsh's `log` is a builtin: use /usr/bin/log.
+
 The cdhash theory of the Calendar grant is not what was observed. Rebuilds,
 the move to the Cellar and even fresh bundle identifiers mostly kept access
 without a prompt, yet one rebuild did prompt. Treat a prompt as possible after

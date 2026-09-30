@@ -206,6 +206,9 @@ check(runner.contains("LABEL='homebrew.mxcl.meeting-alarm'"), "the runner quotes
 check(runner.contains("$AGENTS/$LABEL.plist") && runner.contains("$AGENTS/$LABEL.watchdog.plist"),
       "the runner removes both plists")
 check(runner.contains("\"$0\""), "the runner removes itself")
+check(runner.components(separatedBy: "exec \"$BIN\"").count - 1 == 2
+      && runner.range(of: "sleep 5")!.lowerBound < runner.range(of: "rm -f")!.lowerBound,
+      "the runner looks for the binary twice before removing anything")
 check(runner.range(of: "rm -f")!.lowerBound < runner.range(of: "launchctl bootout")!.lowerBound,
       "files go before bootout, which kills the script")
 // Booting out our own job kills the script, so the other job has to go first
@@ -215,6 +218,18 @@ check(runner.range(of: "$OTHER")!.lowerBound < runner.range(of: "$SELF\"")!.lowe
 check(runner.contains("watchdog) SELF=\"$LABEL.watchdog\"; OTHER=\"$LABEL\"") ||
       runner.contains("watchdog) SELF=\"$LABEL.watchdog\""),
       "the script knows which job it is running as")
+
+// MARK: - Poll schedule
+// StartCalendarInterval, because launchd can hold StartInterval jobs forever.
+
+check((pollSchedule(pollSeconds: 60) as? [String: Int])?.isEmpty == true,
+      "sixty seconds is every minute")
+check((pollSchedule(pollSeconds: 10) as? [String: Int])?.isEmpty == true,
+      "under a minute rounds up to every minute")
+equal((pollSchedule(pollSeconds: 300) as? [[String: Int]])?.map { $0["Minute"]! } ?? [],
+      [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], "five minutes is every fifth minute")
+equal((pollSchedule(pollSeconds: 130) as? [[String: Int]])?.count ?? 0, 30,
+      "a little over two minutes rounds to every second minute")
 
 // MARK: - Report
 

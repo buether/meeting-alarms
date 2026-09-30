@@ -76,7 +76,7 @@ func helpText() -> String {
                           account name that must stay signed in, from
                           `calendars`
       poll_seconds        \(Int(d.pollSeconds))
-                          seconds between calendar checks
+                          seconds between calendar checks, in whole minutes
 
       Ringtones: /System/Library/PrivateFrameworks/ToneLibrary.framework/
                  Versions/A/Resources/Ringtones/  (also /System/Library/Sounds/)

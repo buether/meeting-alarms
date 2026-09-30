@@ -123,7 +123,7 @@ while working on the code and is not committed.
 | `include_calendars` | `[]` | Calendar titles to watch. Empty watches all of them. |
 | `fallback_sound` | Sosumi | Used when `sound` is not on disk. With neither, the alarm still speaks and shows the window. |
 | `expected_source` | `null` | Account name that must still be present, so a signed-out account is reported rather than looking like an empty calendar. |
-| `poll_seconds` | `60` | Seconds between calendar checks. |
+| `poll_seconds` | `60` | Seconds between calendar checks. Rounds to whole minutes. |
 
 To fill in `include_calendars` or `expected_source`, list what EventKit sees:
 
@@ -187,7 +187,7 @@ sound file rather than `MISSING`.
 
 ## How it works
 
-launchd runs `meeting-alarm poll` every 60 seconds. The poll asks EventKit for
+launchd runs `meeting-alarm poll` at the top of every minute. The poll asks EventKit for
 events between eight hours ago and a couple of minutes ahead. Reading
 Calendar.app is what covers every account your Mac syncs and leaves no Google
 API client to maintain. A meeting that is due gets a detached `meeting-alarm
