@@ -79,13 +79,45 @@ A meeting still in progress rings however late your Mac woke up; one that has
 already ended does not. An event with a field it cannot read rings anyway,
 because a missed meeting costs more than a spurious alarm.
 
-`meeting-alarm status` applies those rules to the next eight hours and
-prints a verdict and a reason for every event.
+## Check your setup
+
+Run `meeting-alarm status` after installing and after any change to the
+config. Nothing pops up to tell you a setting is wrong; this listing is the
+check.
+
+```
+POLLER     running - last successful poll 20s ago
+SOUND      Silk.m4r
+CONFIG     ~/Library/Application Support/meeting-alarm/config.json
+
+CALENDARS  watching 1 of 2  (include_calendars: ["Work"])
+  watched      Google   Work
+  not watched  Google   Family
+
+NEXT 8 HOURS  3 will ring, 5 will not
+  all day   silent Offsite                        Work      all-day
+  13:06     rings  Planning                       Work      my status accepted, in progress
+  13:36     rings  Standup                        Work      my status accepted
+  14:46     rings  Design review                  Work      my status pending
+  15:16     silent Focus time                     Work      no other attendees
+  15:46     silent 1:1 with Sam                   Work      my status declined
+  16:36     silent Soccer pickup                  Family    calendar not watched
+  18:16     silent Dinner at Mom's                Family    calendar not watched
+
+No problems found.
+```
+
+Every event in every calendar is listed, including the ones that will not
+ring and why, so you can confirm both halves: what you expect to ring does,
+and what you expect to stay quiet does. Anything wrong is in capitals —
+`STALLED`, `FAILING`, `NOT LOADED`, `MISSING` for the sound, and `NO MATCH`
+for an `include_calendars` name that matches no calendar, with a suggestion
+when only the case is off. The last line counts the problems.
 
 ## Commands
 
 ```
-meeting-alarm status                poller health, recent alarms, and a verdict per event for the next 8 hours
+meeting-alarm status                check your setup: poller health, watched calendars, a verdict per event
 meeting-alarm poll --dry-run        what this minute's poll would do, without ringing anything
 meeting-alarm test                  ring a test alarm
 meeting-alarm calendars             calendar titles and account names EventKit can see
@@ -120,7 +152,7 @@ while working on the code and is not committed.
 | `break_mute` | `true` | Ring through a muted Mac, then put the mute back. `false` respects the mute and leaves the output alone, so the alarm is silent but the window still appears. |
 | `lead_seconds` | `15` | Seconds before the start that it rings. |
 | `max_alarm_seconds` | `900` | Seconds after the start to give up. `0` rings until dismissed. |
-| `include_calendars` | `[]` | Calendar titles to watch. Empty watches all of them. |
+| `include_calendars` | `[]` | Calendar titles to watch, e.g. `["Work"]`. Empty watches all of them. Exact and case-sensitive; `status` shows which calendars are watched and flags a name that matches none. |
 | `fallback_sound` | Sosumi | Used when `sound` is not on disk. With neither, the alarm still speaks and shows the window. |
 | `expected_source` | `null` | Account name that must still be present, so a signed-out account is reported rather than looking like an empty calendar. |
 | `poll_seconds` | `60` | Seconds between calendar checks. Rounds to whole minutes. |
@@ -156,21 +188,20 @@ meeting-alarm alarm --title Test --start $(date +%s) --max-seconds 10
 
 ## When something goes wrong
 
-The tool reports its own failures. After polls have been failing for half an
-hour a dialog says so, and a watchdog checks at 10:05 and 14:05 and complains
-if nothing has succeeded in three hours. To check for yourself:
+Run `meeting-alarm status`. Anything wrong is in capitals. (After half an
+hour of failed polls a dialog also says so, and a watchdog complains at 10:05
+and 14:05 if nothing has succeeded in three hours, but don't rely on noticing
+those.)
 
-```
-meeting-alarm status
-```
-
-A healthy answer has a `last successful poll` under a minute old and names a
-sound file rather than `MISSING`.
+- **`STALLED`.** No poll has succeeded for a while. If the Mac has just woken
+  up, check again in a minute; otherwise run `meeting-alarm install`.
+- **`NO MATCH` or `NOTHING WILL RING`.** Fix the `include_calendars` name it
+  quotes. Names are exact and case-sensitive.
 
 - **`FAILING` with "Calendar access denied".** Turn Meeting Alarm on under
   System Settings > Privacy & Security > Calendars. To get the prompt back,
   run `tccutil reset Calendar com.buether.meeting-alarm` and `meeting-alarm install`.
-- **`launchd: NOT LOADED`.** `meeting-alarm install` did not finish. Run it again and
+- **`NOT LOADED`.** `meeting-alarm install` did not finish. Run it again and
   read its output.
 - **No events listed, though you have meetings.** Calendar.app has not synced
   them. Set its refresh interval, as under Install.

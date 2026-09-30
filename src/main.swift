@@ -20,7 +20,7 @@ usage: meeting-alarm <command> [options]
   poll [--dry-run] [--now ISO8601] [--events-file PATH]
   alarm --title TITLE --start EPOCH [--url URL] [--max-seconds N] [--volume 0-100]
   test
-  status
+  status [--events-file PATH]
   calendars
   watchdog [--max-age SECONDS] [--wait SECONDS]
   install
@@ -98,7 +98,7 @@ case "test":
     exit(requestTestAlarm())
 
 case "status":
-    exit(status())
+    exit(status(eventsFile: option("--events-file")))
 
 case "calendars":
     exit(listCalendars())

@@ -206,65 +206,121 @@ func requestTestAlarm() -> Int32 {
     return 0
 }
 
-func status() -> Int32 {
+func pad(_ text: String, _ width: Int) -> String {
+    let clipped = text.count > width ? String(text.prefix(width - 1)) + "…" : text
+    return clipped.padding(toLength: width, withPad: " ", startingAt: 0)
+}
+
+/// Prints the calendar table shared by `status` and `calendars`, and returns
+/// whether include_calendars has a problem.
+@discardableResult
+func printCalendarPlan(_ plan: CalendarPlan, cfg: Config) -> Bool {
+    let eligible = plan.rows.filter { $0.watch != .neverRings }.count
+    if cfg.includeCalendars.isEmpty {
+        print("CALENDARS  watching all \(eligible)  (include_calendars is empty)")
+    } else {
+        let names = cfg.includeCalendars.map { "\"\($0)\"" }.joined(separator: ", ")
+        print("CALENDARS  watching \(plan.rows.filter { $0.watch == .watched }.count) of \(eligible)  (include_calendars: [\(names)])")
+    }
+    let width = min(24, plan.rows.map { $0.calendar.source.count }.max() ?? 0)
+    for (calendar, watch) in plan.rows {
+        let label = ["watched", "not watched", "never rings"][[CalendarWatch.watched, .notListed, .neverRings].firstIndex(of: watch)!]
+        print("  \(pad(label, 12)) \(pad(calendar.source, max(width, 6)))  \(calendar.title)")
+    }
+    for miss in plan.unmatched {
+        if plan.rows.contains(where: { $0.watch == .neverRings && $0.calendar.title == miss.name }) {
+            print("  NO MATCH   include_calendars lists \"\(miss.name)\", a birthday or subscribed calendar. Those have no attendees, so they never ring.")
+            continue
+        }
+        let hint = miss.nearMiss.map { " Did you mean \"\($0)\"? Names are case-sensitive." } ?? ""
+        print("  NO MATCH   include_calendars lists \"\(miss.name)\", but no calendar that can ring is called that.\(hint)")
+    }
+    if !cfg.includeCalendars.isEmpty && plan.rows.allSatisfy({ $0.watch != .watched }) {
+        print("  NOTHING WILL RING: include_calendars matches none of your calendars.")
+    }
+    return !plan.unmatched.isEmpty
+}
+
+func status(eventsFile: String? = nil) -> Int32 {
     let cfg = Config.load()
     let state = State.load()
     let now = Date()
+    var problems = 0
 
-    let printed = launchctl(["print", "gui/\(getuid())/\(Paths.label)"])
-    if printed.code != 0 {
-        print("launchd: NOT LOADED (run install.sh)")
-    } else {
-        for line in printed.out.split(separator: "\n") {
-            if ["state =", "last exit code =", "runs ="].contains(where: { line.contains($0) }) {
-                print("launchd: \(line.trimmingCharacters(in: .whitespaces))")
-            }
-        }
-    }
+    let loaded = launchctl(["print", "gui/\(getuid())/\(Paths.label)"]).code == 0
+    let health = pollerHealth(loaded: loaded, lastOk: state.lastOk, failingSince: state.failingSince,
+                              lastError: state.lastError, now: now.timeIntervalSince1970,
+                              pollSeconds: cfg.pollSeconds)
+    if !health.ok { problems += 1 }
+    print("POLLER     \(health.line)")
+    let sound = cfg.soundDescription
+    if cfg.resolvedSound == nil { problems += 1 }
+    print("SOUND      \(sound)")
+    print("CONFIG     \(Paths.configPath?.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~") ?? "none - built-in defaults")")
 
-    func age(_ ts: Double?) -> String {
-        guard let ts, ts > 0 else { return "never" }
-        return "\(Int(now.timeIntervalSince1970 - ts))s ago"
-    }
-
-    print("last successful poll: \(age(state.lastOk))  (polls: \(state.polls))")
-    if let failingSince = state.failingSince {
-        let since = clockString(Date(timeIntervalSince1970: failingSince), "yyyy-MM-dd HH:mm")
-        print("FAILING since \(since): \(state.lastError ?? "unknown error")")
-    }
-    print("sound: \(cfg.soundDescription)")
-
-    let recent = state.fired.sorted { $0.value.start < $1.value.start }.suffix(5)
-    print(recent.isEmpty ? "recent alarms: none" : "recent alarms:")
-    for (_, info) in recent {
-        let when = clockString(Date(timeIntervalSince1970: info.start), "EEE HH:mm")
-        print("  \(when)  \(info.title)")
-    }
-
+    let calendars: [CalendarInfo]
+    let events: [Event]
     let lo = now.addingTimeInterval(-lateLookbackSeconds)
     let hi = now.addingTimeInterval(8 * 3600)
-    let events: [Event]
     do {
-        events = within(try CalendarStore.events(cfg: cfg, from: lo, to: hi), lo, hi)
+        if let eventsFile {
+            // A recorded day: its calendars are whatever its events name.
+            events = within(try Event.load(fixture: eventsFile), lo, hi)
+            calendars = Set(events.compactMap(\.calendar)).sorted().map {
+                CalendarInfo(title: $0, source: "fixture")
+            }
+        } else {
+            calendars = try CalendarStore.calendars()
+            events = within(try CalendarStore.events(cfg: cfg, from: lo, to: hi, onlyWatched: false),
+                            lo, hi)
+        }
     } catch {
-        print("calendar query failed: \(error)")
+        print("")
+        print("CALENDAR   query failed - nothing will ring. \(error)")
         return 1
     }
-    print(events.isEmpty ? "next 8 hours: no events" : "next 8 hours (\(events.count) events):")
-    for event in sortByStart(events) {
-        let (ok, reason) = event.eligible()
-        let fired = state.fired[event.key] != nil
-        let verdict = fired ? "fired" : (ok ? "alarm" : "skip")
-        let when = clockString(event.startOr(now), "HH:mm")
-        print("  \(when)  \(verdict.padding(toLength: 5, withPad: " ", startingAt: 0))  "
-              + "\(event.displayTitle)  (\(reason))")
+
+    print("")
+    let plan = planCalendars(calendars, include: cfg.includeCalendars)
+    if printCalendarPlan(plan, cfg: cfg) { problems += 1 }
+
+    // Ended meetings are history, not a prediction.
+    let upcoming = sortByStart(events.filter { event in
+        guard let end = event.endDate else { return true }
+        return end > now
+    })
+    let verdicts = upcoming.map {
+        ($0, verdict(for: $0, now: now, fired: state.fired, watchedTitles: plan.watchedTitles))
     }
-    return 0
+    let ringing = verdicts.filter { $0.1.verdict == .rings }.count
+    print("")
+    if upcoming.isEmpty {
+        print("NEXT 8 HOURS  no events in any calendar")
+    } else {
+        print("NEXT 8 HOURS  \(ringing) will ring, \(upcoming.count - ringing) will not")
+    }
+    let calendarWidth = min(20, upcoming.compactMap(\.calendar).map(\.count).max() ?? 0)
+    for (event, result) in verdicts {
+        let when = whenColumn(event, now: now)
+        print("  \(pad(when, 9)) \(pad(result.verdict.rawValue, 6)) \(pad(event.displayTitle, 30)) "
+            + "\(pad(event.calendar ?? "", max(calendarWidth, 8)))  \(result.reason)")
+    }
+
+    let recent = state.fired.sorted { $0.value.start < $1.value.start }.suffix(5)
+    print("")
+    print(recent.isEmpty ? "RECENT ALARMS  none" : "RECENT ALARMS")
+    for (_, info) in recent {
+        print("  \(clockString(Date(timeIntervalSince1970: info.start), "EEE HH:mm"))  \(info.title)")
+    }
+
+    print("")
+    print(problems == 0 ? "No problems found." : "\(problems) problem\(problems == 1 ? "" : "s") above, in capitals.")
+    return problems == 0 ? 0 : 1
 }
 
-/// Lists what EventKit can see, for filling in `include_calendars` and
-/// `expected_source`.
+/// Lists what EventKit can see, and which of it the poller watches.
 func listCalendars() -> Int32 {
+    let cfg = Config.load()
     let calendars: [CalendarInfo]
     do {
         calendars = try CalendarStore.calendars()
@@ -276,13 +332,7 @@ func listCalendars() -> Int32 {
         print("no calendars")
         return 0
     }
-    let width = calendars.map(\.source.count).max() ?? 0
-    print("SOURCE".padding(toLength: max(width, 6), withPad: " ", startingAt: 0) + "  CALENDAR")
-    for calendar in calendars.sorted(by: { ($0.source, $0.title) < ($1.source, $1.title) }) {
-        let source = calendar.source.padding(toLength: max(width, 6), withPad: " ", startingAt: 0)
-        print("\(source)  \(calendar.title)")
-    }
-    return 0
+    return printCalendarPlan(planCalendars(calendars, include: cfg.includeCalendars), cfg: cfg) ? 1 : 0
 }
 
 func watchdog(maxAge: Double, wait: Double) -> Int32 {

@@ -30,9 +30,19 @@ func helpText() -> String {
       meeting still in progress rings however late the Mac woke; one that has
       ended does not. An event it cannot read rings anyway.
 
+    CHECK YOUR SETUP
+      Run `meeting-alarm status` after installing and after any config change.
+      Nothing pops up to warn you; this listing is the check. It shows:
+        POLLER      "running" and a recent poll, or what is wrong in CAPITALS
+        CALENDARS   every calendar: watched, not watched, or never rings,
+                    plus NO MATCH for an include_calendars name that is wrong
+        NEXT 8 HOURS  every event in every calendar, "rings" or "silent",
+                    and why - so confirm what you expect to ring does, and
+                    what you expect to stay quiet does
+      It ends with "No problems found." or a count of problems above.
+
     COMMANDS
-      status              health, recent alarms, a verdict for every event in
-                          the next 8 hours
+      status              the check above
       test                ring a test alarm through the real path
       calendars           calendar titles and account names, for the settings
       poll --dry-run      what this minute's poll would do, ringing nothing
@@ -69,9 +79,9 @@ func helpText() -> String {
                           seconds after the start to give up; 0 = never
       include_calendars   []
                           calendar titles to watch, e.g. ["Work"]; empty = all.
-                          Exact and case-sensitive: a name that matches nothing
-                          means nothing rings. Check with `calendars`, then
-                          `status`.
+                          Exact and case-sensitive; `status` flags a name that
+                          matches nothing, and lists the unwatched calendars'
+                          events as silent.
       expected_source     null
                           account name that must stay signed in, from
                           `calendars`
@@ -87,9 +97,12 @@ func helpText() -> String {
       or a meeting added this morning can be missed.
 
     WHEN SOMETHING GOES WRONG
-      Run `meeting-alarm status`. Healthy: last successful poll under a minute
-      ago, and a sound named rather than MISSING. It also warns on its own after
-      \(Int(d.failureNoticeAfterSeconds / 60)) minutes of failures, and checks at 10:05 and 14:05.
+      Run `meeting-alarm status`; anything wrong is in CAPITALS.
+      STALLED
+          no poll has succeeded for a while. After sleep, wait a minute and
+          check again; otherwise run `meeting-alarm install`
+      NO MATCH / NOTHING WILL RING
+          fix the include_calendars name it quotes; it suggests near misses
 
       FAILING, Calendar access denied
           System Settings > Privacy & Security > Calendars, turn on Meeting
@@ -98,10 +111,10 @@ func helpText() -> String {
             meeting-alarm install
       FAILING, waiting on a permission prompt
           a Calendar prompt is on screen; click Allow
-      launchd: NOT LOADED
+      NOT LOADED
           run `meeting-alarm install` and read its output
       no events, though you have meetings
-          Calendar.app has not synced, or include_calendars matches nothing
+          Calendar.app has not synced; see GOOGLE CALENDARS
 
       Logs: ~/Library/Logs/meeting-alarm/  (poll.log, alarm.log, launchd.log)
 

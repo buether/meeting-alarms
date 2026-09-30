@@ -61,6 +61,9 @@ private func email(_ participant: EKParticipant) -> String? {
 struct CalendarInfo {
     var title: String
     var source: String
+    /// Birthdays and subscribed calendars carry no attendees, so nothing in them
+    /// can ever ring.
+    var neverRings = false
 }
 
 enum CalendarStore {
@@ -90,11 +93,15 @@ enum CalendarStore {
     static func calendars() throws -> [CalendarInfo] {
         try requireAccess()
         return store.calendars(for: .event).map {
-            CalendarInfo(title: $0.title, source: $0.source?.title ?? "")
+            CalendarInfo(title: $0.title, source: $0.source?.title ?? "",
+                         neverRings: $0.type == .birthday || $0.type == .subscription)
         }
     }
 
-    static func events(cfg: Config, from: Date, to: Date) throws -> [Event] {
+    /// `onlyWatched: false` is for `status`, which lists what the poller ignores
+    /// too, so a calendar left out of include_calendars shows up as silent
+    /// rather than not at all.
+    static func events(cfg: Config, from: Date, to: Date, onlyWatched: Bool = true) throws -> [Event] {
         try requireAccess()
 
         // Birthdays and subscribed calendars carry no attendees, so nothing in them
@@ -102,7 +109,7 @@ enum CalendarStore {
         var calendars = store.calendars(for: .event).filter {
             $0.type != .birthday && $0.type != .subscription
         }
-        if !cfg.includeCalendars.isEmpty {
+        if onlyWatched && !cfg.includeCalendars.isEmpty {
             calendars = calendars.filter { cfg.includeCalendars.contains($0.title) }
         }
         // An empty array would mean "every calendar" to predicateForEvents, which is

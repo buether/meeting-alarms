@@ -231,6 +231,69 @@ equal((pollSchedule(pollSeconds: 300) as? [[String: Int]])?.map { $0["Minute"]! 
 equal((pollSchedule(pollSeconds: 130) as? [[String: Int]])?.count ?? 0, 30,
       "a little over two minutes rounds to every second minute")
 
+// MARK: - Status report
+// status is the only place a user checks their setup, so config mistakes have
+// to be visible in its output rather than in a notice nobody remembers.
+
+let cals = [
+    CalendarInfo(title: "Work", source: "Google"),
+    CalendarInfo(title: "Family", source: "Google"),
+    CalendarInfo(title: "Birthdays", source: "Other", neverRings: true),
+]
+let allPlan = planCalendars(cals, include: [])
+equal(allPlan.watchedTitles, ["Work", "Family"], "empty include_calendars watches every calendar that can ring")
+check(allPlan.unmatched.isEmpty, "empty include_calendars has nothing unmatched")
+equal(allPlan.rows.first { $0.calendar.title == "Birthdays" }?.watch, .neverRings,
+      "birthdays never ring even when everything is watched")
+
+let workPlan = planCalendars(cals, include: ["Work"])
+equal(workPlan.watchedTitles, ["Work"], "include_calendars watches only what it names")
+equal(workPlan.rows.first { $0.calendar.title == "Family" }?.watch, .notListed,
+      "an unnamed calendar is shown as not watched, not hidden")
+equal(workPlan.rows.first?.calendar.title, "Work", "watched calendars list first")
+
+let typoPlan = planCalendars(cals, include: ["work"])
+check(typoPlan.watchedTitles.isEmpty, "a wrong-case name watches nothing")
+equal(typoPlan.unmatched.map(\.name), ["work"], "a wrong-case name is reported")
+equal(typoPlan.unmatched.first?.nearMiss, "Work", "a wrong-case name suggests the real one")
+equal(planCalendars(cals, include: ["Birthdays"]).unmatched.map(\.name), ["Birthdays"],
+      "naming a calendar that never rings is reported")
+check(planCalendars(cals, include: ["Nope"]).unmatched.first?.nearMiss == nil,
+      "no suggestion when nothing is close")
+
+var workEvent = makeEvent(600)
+workEvent.calendar = "Work"
+var familyEvent = makeEvent(600, id: "f")
+familyEvent.calendar = "Family"
+equal(verdict(for: workEvent, now: now, fired: [:], watchedTitles: ["Work"]).verdict, .rings,
+      "an eligible event in a watched calendar rings")
+equal(verdict(for: familyEvent, now: now, fired: [:], watchedTitles: ["Work"]).reason,
+      "calendar not watched", "an event in an unwatched calendar says why it is silent")
+equal(verdict(for: workEvent, now: now, fired: [workEvent.key: firedMarker], watchedTitles: ["Work"]).verdict,
+      .rang, "an event that already rang says so")
+var running = makeEvent(-120, duration: 1800)
+running.calendar = "Work"
+check(verdict(for: running, now: now, fired: [:], watchedTitles: ["Work"]).reason.hasSuffix("in progress"),
+      "a meeting under way is marked in progress")
+equal(verdict(for: makeEvent(600, me: "declined"), now: now, fired: [:], watchedTitles: []).verdict,
+      .silent, "a declined event with no calendar recorded is still judged on its own merits")
+
+let t = now.timeIntervalSince1970
+check(pollerHealth(loaded: true, lastOk: t - 30, failingSince: nil, lastError: nil,
+                   now: t, pollSeconds: 60).ok, "a poll 30s ago is healthy")
+let stalled = pollerHealth(loaded: true, lastOk: t - 11 * 86400, failingSince: nil, lastError: nil,
+                           now: t, pollSeconds: 60)
+check(!stalled.ok && stalled.line.hasPrefix("STALLED") && stalled.line.contains("11 days"),
+      "a poller silent for eleven days reads as stalled, whatever launchd says")
+check(pollerHealth(loaded: false, lastOk: t - 30, failingSince: nil, lastError: nil,
+                   now: t, pollSeconds: 60).line.hasPrefix("NOT LOADED"), "unloaded agents are reported")
+check(pollerHealth(loaded: true, lastOk: t - 30, failingSince: t - 60, lastError: "denied",
+                   now: t, pollSeconds: 60).line.hasPrefix("FAILING"), "a failing poller is reported")
+check(pollerHealth(loaded: true, lastOk: nil, failingSince: nil, lastError: nil,
+                   now: t, pollSeconds: 60).line.hasPrefix("NEVER RUN"), "a poller that never succeeded is reported")
+equal(humanAge(45), "45s", "seconds read as seconds")
+equal(humanAge(11 * 86400), "11 days", "days read as days")
+
 // MARK: - Report
 
 if failures.isEmpty {
