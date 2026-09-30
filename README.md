@@ -91,6 +91,7 @@ meeting-alarm test                  ring a test alarm
 meeting-alarm calendars             calendar titles and account names EventKit can see
 meeting-alarm install               write and load the two LaunchAgents for wherever this binary lives
 meeting-alarm uninstall             unload and remove them; logs and history stay
+meeting-alarm help                  most of this README, in the terminal
 ./install.sh                        in a checkout: rebuild, then install
 ./uninstall.sh                      in a checkout: uninstall, then delete build/
 ```
@@ -150,7 +151,7 @@ works too. To hear one before you keep it, put its path in `config.json` and
 ring a ten-second alarm:
 
 ```
-meeting-alarm alarm --title     Test --start $(date +%s) --max-seconds 10
+meeting-alarm alarm --title Test --start $(date +%s) --max-seconds 10
 ```
 
 ## When something goes wrong

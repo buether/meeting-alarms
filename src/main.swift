@@ -25,6 +25,9 @@ usage: meeting-alarm <command> [options]
   watchdog [--max-age SECONDS] [--wait SECONDS]
   install
   uninstall
+  help
+
+Run `meeting-alarm help` for the full guide.
 """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -112,8 +115,8 @@ case "watchdog":
         wait: Double(option("--wait") ?? "") ?? 90
     ))
 
-case "--help", "-h", "help":
-    print(usage)
+case "help", "--help", "-h":
+    print(helpText())
     exit(0)
 
 default:
