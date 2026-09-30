@@ -81,7 +81,42 @@ func spawnAlarm(_ due: [Event], now: Date) {
               logName: "alarm")
 }
 
+private var pollDeadline: DispatchSourceTimer?
+
+/// A poll that never returns wedges the job for good: launchd will not start
+/// the next one while this one is still running. EventKit's calls into tccd
+/// have no timeout of their own while a permission prompt sits unanswered, and
+/// that once stopped every poll for eleven days with only the watchdog noticing.
+/// So the whole poll gets a deadline, and missing it counts as a failure like
+/// any other, which is what eventually raises the failure notice.
+func armPollDeadline(dryRun: Bool) {
+    let seconds = Double(ProcessInfo.processInfo.environment["MEETING_ALARM_POLL_DEADLINE"] ?? "")
+        ?? 150
+    let timer = DispatchSource.makeTimerSource(queue: .global())
+    timer.schedule(deadline: .now() + seconds)
+    timer.setEventHandler {
+        let message = "poll still running after \(Int(seconds))s "
+            + "(waiting on a Calendar permission prompt?); exiting so the next one can start"
+        if !dryRun {
+            let cfg = Config.load()
+            let now = Date()
+            var state = State.load()
+            state.lastError = message
+            state.failingSince = state.failingSince ?? now.timeIntervalSince1970
+            maybeNotifyFailure(state: &state, now: now, cfg: cfg)
+            state.save(now: now.timeIntervalSince1970, cfg: cfg)
+        }
+        log("FAIL \(message)")
+        printErr("FAIL \(message)")
+        // Not exit(): its teardown could block on whatever the poll is stuck in.
+        _exit(2)
+    }
+    timer.resume()
+    pollDeadline = timer
+}
+
 func poll(dryRun: Bool, nowOverride: Date?, eventsFile: String?) -> Int32 {
+    armPollDeadline(dryRun: dryRun)
     let cfg = Config.load()
     let now = nowOverride ?? Date()
     var state = State.load()

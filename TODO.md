@@ -34,14 +34,24 @@ both LaunchAgents.
 
 ## To do
 
-- [ ] Verify the build under Homebrew, not just in a checkout: `swiftc` through
-      superenv's filtered PATH, and `codesign` inside the build sandbox.
-- [ ] Verify the Calendar grant survives the bundle moving to a Cellar path.
-      Two local rebuilds kept it, which is weak evidence — the cdhash changed
-      both times and TCC did not re-prompt, so the mechanism is not yet
-      understood well enough to promise either outcome in the README.
-- [ ] Run `brew audit --strict --online buether/tap/meeting-alarm` and
-      `brew test` once the formula has been installed.
+Nothing blocking. Verified against a real `brew install` of 1.0.0: `swiftc`
+builds under superenv, `codesign` works inside the build sandbox, `brew test`
+and `brew audit --strict --online` pass, and the Cellar build read the calendar
+without a new prompt.
+
+## Learned the hard way
+
+A poll that blocks forever wedges the job: launchd does not start the next one
+while it runs. On 2026-09-19 a rebuild raised a Calendar prompt, the lid was
+closed on it, and the poller stayed stuck for eleven days — past the laptop
+being opened again — while the watchdog logged `stale` twice a day. Every poll
+now has a deadline (150s, `$MEETING_ALARM_POLL_DEADLINE`) after which it records
+a failure and `_exit`s, so the next poll starts and the failure notice can fire.
+
+The cdhash theory of the Calendar grant is not what was observed. Rebuilds,
+the move to the Cellar and even fresh bundle identifiers mostly kept access
+without a prompt, yet one rebuild did prompt. Treat a prompt as possible after
+any rebuild, and do not promise either outcome in the README.
 
 The `install` subcommand rewrites a Cellar path through `opt` before it goes in
 a plist, so `brew upgrade` does not leave an agent pointing at a version
