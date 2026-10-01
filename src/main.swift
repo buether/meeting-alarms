@@ -10,6 +10,7 @@ import Foundation
 //   test      Arm a one-off alarm for the next poll and kick the launchd job.
 //   status    Poller health, recent alarms, and upcoming candidates.
 //   calendars Calendar titles and account names EventKit can see.
+//   settings  Choose apps for meeting links.
 //   watchdog  Warn if the poller has not succeeded recently.
 //   install   Write and load both LaunchAgents for wherever this binary is.
 //   uninstall Unload and remove them.
@@ -22,6 +23,7 @@ usage: meeting-alarm <command> [options]
   test
   status [--events-file PATH]
   calendars
+  settings
   watchdog [--max-age SECONDS] [--wait SECONDS]
   install
   uninstall
@@ -102,6 +104,13 @@ case "status":
 
 case "calendars":
     exit(listCalendars())
+
+case "settings":
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    let settings = MeetingLinkSettingsWindow(onClose: { exit(0) })
+    settings.show()
+    withExtendedLifetime(settings) { app.run() }
 
 case "install":
     exit(installAgents())

@@ -294,139 +294,106 @@ check(pollerHealth(loaded: true, lastOk: nil, failingSince: nil, lastError: nil,
 equal(humanAge(45), "45s", "seconds read as seconds")
 equal(humanAge(11 * 86400), "11 days", "days read as days")
 
-// MARK: - Meeting links
+// MARK: - Meeting link settings
 
-let appFixtures = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
-    .appendingPathComponent("meeting-alarm-apps-\(UUID().uuidString)")
-let userApps = appFixtures.appendingPathComponent("User Applications")
-let systemApps = appFixtures.appendingPathComponent("System Applications")
-
+let appFixtures = FileManager.default.temporaryDirectory
+    .appendingPathComponent("meeting-alarm-settings-\(UUID().uuidString)")
+let userApps = appFixtures.appendingPathComponent("Applications")
 func writeWebApp(_ path: URL, info: [String: Any]) {
     let contents = path.appendingPathComponent("Contents")
     try! FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
     let plist = try! PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
     try! plist.write(to: contents.appendingPathComponent("Info.plist"))
 }
-
-let safariApp = userApps.appendingPathComponent("My Meetings.app")
-writeWebApp(safariApp, info: [
-    "CFBundleIdentifier": "com.apple.Safari.WebApp.test",
-    "WKManifestURL": "https://meet.google.com/_/MeetingsDesktopUi/manifest.json",
-])
-equal(findMeetWebApp(in: [userApps])?.resolvingSymlinksInPath().path,
-      safariApp.resolvingSymlinksInPath().path,
-      "a renamed Safari Meet app is found by its manifest URL")
-
-let chromeApp = userApps.appendingPathComponent("Chrome Apps.localized/Work Calls.app")
 let chromeInfo: [String: Any] = [
     "CFBundleIdentifier": "com.google.Chrome.app.test",
     "CrAppModeShortcutID": "saved-meet-app-id",
     "CrAppModeShortcutURL": "https://meet.google.com/landing?lfhs=2",
 ]
+let chromeApp = userApps.appendingPathComponent("Chrome Apps.localized/Work Calls.app")
 writeWebApp(chromeApp, info: chromeInfo)
-equal(findMeetWebApp(in: [userApps])?.resolvingSymlinksInPath().path,
-      chromeApp.resolvingSymlinksInPath().path,
-      "a renamed Chrome Meet app in a browser subdirectory takes priority over Safari")
-let systemChromeApp = systemApps.appendingPathComponent("Meet.app")
-writeWebApp(systemChromeApp, info: chromeInfo)
-equal(findMeetWebApp(in: [userApps, systemApps])?.resolvingSymlinksInPath().path,
-      chromeApp.resolvingSymlinksInPath().path,
-      "a user-installed Chrome Meet app takes priority over a system copy")
-equal(findMeetWebApp(in: [systemApps])?.resolvingSymlinksInPath().path,
-      systemChromeApp.resolvingSymlinksInPath().path,
-      "a system-installed Chrome Meet app is found")
-let safariOnlyApps = appFixtures.appendingPathComponent("Safari Only")
-writeWebApp(safariOnlyApps.appendingPathComponent("Meet.app"), info: [
-    "CFBundleIdentifier": "com.apple.Safari.WebApp.test",
-    "WKManifestURL": "https://meet.google.com/_/MeetingsDesktopUi/manifest.json",
-])
-equal(findMeetWebApp(in: [safariOnlyApps, systemApps])?.resolvingSymlinksInPath().path,
-      systemChromeApp.resolvingSymlinksInPath().path,
-      "a system Chrome app takes priority over a user Safari app")
-
-let unrelatedApps = appFixtures.appendingPathComponent("Unrelated Applications")
-writeWebApp(unrelatedApps.appendingPathComponent("Google Meet.app"), info: [
-    "CFBundleIdentifier": "com.google.Chrome.app.calendar",
-    "CrAppModeShortcutURL": "https://calendar.google.com/",
-])
-writeWebApp(unrelatedApps.appendingPathComponent("Spoof.app"), info: [
-    "CFBundleIdentifier": "com.google.Chrome.app.spoof",
-    "CrAppModeShortcutURL": "https://meet.google.com.example.org/",
-])
-writeWebApp(unrelatedApps.appendingPathComponent("Native.app"), info: [
-    "CFBundleIdentifier": "org.example.native",
-    "CrAppModeShortcutURL": "https://meet.google.com/",
-])
-writeWebApp(unrelatedApps.appendingPathComponent("Container.app/Contents/Nested.app"),
-            info: chromeInfo)
-writeWebApp(unrelatedApps.appendingPathComponent("Broken.app"), info: chromeInfo)
-try! "not a plist".write(to: unrelatedApps.appendingPathComponent("Broken.app/Contents/Info.plist"),
-                        atomically: true, encoding: .utf8)
-check(findMeetWebApp(in: [unrelatedApps]) == nil,
-      "names, lookalike hosts, malformed plists and nested bundles do not select an app")
-check(findMeetWebApp(in: [appFixtures.appendingPathComponent("Missing")]) == nil,
-      "a missing applications directory falls back without failing")
-
+let safariApp = userApps.appendingPathComponent("My Meetings.app")
+writeWebApp(safariApp, info: ["CFBundleIdentifier": "com.apple.Safari.WebApp.test"])
 let meetLink = URL(string: "https://meet.google.com/abc-defg-hij?authuser=1#join")!
-equal(chromeMeetArguments(info: chromeInfo, meetingURL: meetLink), [
-    "--app-id=saved-meet-app-id",
-    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
-], "Chrome launches the saved app with the meeting URL as its launch override")
-var profiledChromeInfo = chromeInfo
-profiledChromeInfo["CrAppModeUserDataDir"] = "/Users/test/Library/Application Support/Google/Chrome/Profile 2/Web Applications/_crx_saved-meet-app-id"
-profiledChromeInfo["CrAppModeProfileDir"] = "Profile 2"
-equal(chromeMeetArguments(info: profiledChromeInfo, meetingURL: meetLink), [
-    "--app-id=saved-meet-app-id",
-    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
-    "--user-data-dir=/Users/test/Library/Application Support/Google/Chrome",
-    "--profile-directory=Profile 2",
-], "Chrome keeps the saved app's user data directory and profile")
-var missingID = chromeInfo
-missingID.removeValue(forKey: "CrAppModeShortcutID")
-check(chromeMeetArguments(info: missingID, meetingURL: meetLink) == nil,
-      "a Chrome app with no shortcut ID cannot launch the meeting")
-writeWebApp(unrelatedApps.appendingPathComponent("Missing ID.app"), info: missingID)
-check(findMeetWebApp(in: [unrelatedApps]) == nil,
-      "a Chrome app without a shortcut ID is skipped during discovery")
-let sharedProfileState: [String: Any] = ["app_shims": ["saved-meet-app-id": [
-    "installed_profiles": ["Default", "Profile 2"],
-    "last_active_profiles": ["Deleted Profile", "Profile 2"],
-]]]
-equal(chromeMeetArguments(info: chromeInfo, meetingURL: meetLink, localState: sharedProfileState), [
-    "--app-id=saved-meet-app-id",
-    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
-    "--profile-directory=Profile 2",
-], "a shared Chrome app uses an installed last-active profile, excluding stale profiles")
-var explicitProfileInfo = chromeInfo
-explicitProfileInfo["CrAppModeProfileDir"] = "Default"
-equal(chromeMeetArguments(info: explicitProfileInfo, meetingURL: meetLink, localState: sharedProfileState)?.last,
-      "--profile-directory=Default", "explicit saved profile metadata takes priority over shared state")
-let staleProfileState: [String: Any] = ["app_shims": ["saved-meet-app-id": [
-    "installed_profiles": ["Profile 2", "Default"],
-    "last_active_profiles": ["Deleted Profile"],
-]]]
-equal(chromeMeetArguments(info: chromeInfo, meetingURL: meetLink, localState: staleProfileState)?.last,
-      "--profile-directory=Default", "stale shared profile state chooses an installed profile deterministically")
-equal(chromeMeetArguments(info: chromeInfo, meetingURL: meetLink, localState: ["app_shims": "malformed"]), [
-    "--app-id=saved-meet-app-id",
-    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
-], "unreadable or malformed shared state leaves profile selection to Chrome")
-let chromeConfiguration = chromeMeetConfiguration(info: chromeInfo, meetingURL: meetLink)
-check(chromeConfiguration?.createsNewApplicationInstance == true,
-      "Chrome gets a new launch instance so an already running browser receives the arguments")
-equal(chromeConfiguration?.arguments, [
-    "--app-id=saved-meet-app-id",
-    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
-], "the macOS launch configuration carries Chrome's app ID and URL override")
-check(chromeMeetConfiguration(info: missingID, meetingURL: meetLink) == nil,
-      "missing Chrome app metadata cannot create a launch configuration")
+let zoomLink = URL(string: "https://work.zoom.us/j/123?pwd=secret#join")!
+let teamsLink = URL(string: "https://teams.microsoft.com/l/meetup-join/test")!
+equal(MeetingService.forURL(meetLink), .googleMeet, "Meet selects its own app setting")
+equal(MeetingService.forURL(zoomLink), .zoom, "Zoom subdomains select the Zoom setting")
+equal(MeetingService.forURL(teamsLink), .teams, "Teams selects its own app setting")
+equal(MeetingService.forURL(URL(string: "https://teams.live.com/meet/123")!), .teams,
+      "personal Teams meetings use the Teams setting")
+equal(MeetingService.forURL(URL(string: "https://teams.microsoft.us/l/meetup-join/123")!), .teams,
+      "government Teams meetings use the Teams setting")
+equal(MeetingService.forURL(URL(string: "https://work.webex.com/meet/person")!), .webex,
+      "Webex subdomains select the Webex setting")
+for link in ["https://meet.google.com.example.org/abc", "https://notzoom.us/j/123",
+             "file://meet.google.com/abc", "https://meet.google.com:8443/abc"] {
+    equal(MeetingService.forURL(URL(string: link)!), .other, "lookalike or non-web links use Other: \(link)")
+}
+let settingsPath = appFixtures.appendingPathComponent("config.json")
+try! Data(#"{"volume":42,"expected_source":"Work","future_key":{"enabled":true}}"#.utf8)
+    .write(to: settingsPath)
+try! MeetingLinkPreferences.setApplication(safariApp, for: .googleMeet, at: settingsPath)
+try! MeetingLinkPreferences.setApplication(chromeApp, for: .zoom, at: settingsPath)
+let savedPreferences = MeetingLinkPreferences.load(at: settingsPath)
+equal(savedPreferences.application(for: meetLink)?.path, safariApp.path,
+      "a saved explicit Meet choice survives reloading")
+equal(savedPreferences.application(for: zoomLink)?.path, chromeApp.path,
+      "saving Zoom does not overwrite the Meet choice")
+check(savedPreferences.application(for: teamsLink) == nil, "unset providers keep the macOS default")
+let savedJSON = try! JSONSerialization.jsonObject(with: Data(contentsOf: settingsPath)) as! [String: Any]
+equal(savedJSON["volume"] as? Int, 42, "app settings preserve alarm volume")
+equal(savedJSON["expected_source"] as? String, "Work", "app settings preserve calendar account settings")
+check((savedJSON["future_key"] as? [String: Bool])?["enabled"] == true,
+      "app settings preserve unknown config keys")
+try! MeetingLinkPreferences.setApplication(nil, for: .googleMeet, at: settingsPath)
+check(MeetingLinkPreferences.load(at: settingsPath).application(for: meetLink) == nil,
+      "choosing macOS default removes the override")
+equal(MeetingLinkPreferences.load(at: settingsPath).application(for: zoomLink)?.path, chromeApp.path,
+      "resetting Meet does not reset Zoom")
+let newSettings = appFixtures.appendingPathComponent("New/config.json")
+try! MeetingLinkPreferences.setApplication(safariApp, for: .googleMeet, at: newSettings)
+equal(MeetingLinkPreferences.load(at: newSettings).application(for: meetLink)?.path, safariApp.path,
+      "settings can create a config directory on first use")
+let corruptSettings = appFixtures.appendingPathComponent("broken.json")
+try! Data("broken config".utf8).write(to: corruptSettings)
+var refusedCorruptConfig = false
+do {
+    try MeetingLinkPreferences.setApplication(safariApp, for: .googleMeet, at: corruptSettings)
+} catch { refusedCorruptConfig = true }
+check(refusedCorruptConfig, "a malformed config is reported instead of overwritten")
+equal(try! String(contentsOf: corruptSettings, encoding: .utf8), "broken config",
+      "failed saves leave the original config untouched")
+check(MeetingLinkPreferences.load(at: corruptSettings).application(for: meetLink) == nil,
+      "an unreadable config leaves link handling with macOS")
+let invalidPreferences = MeetingLinkPreferences(applications: [
+    "google_meet": "relative/Meet.app", "zoom": settingsPath.path,
+])
+check(invalidPreferences.application(for: meetLink) == nil,
+      "relative app paths cannot override the macOS handler")
+check(invalidPreferences.application(for: zoomLink) == nil,
+      "ordinary files cannot override the macOS handler")
+let otherPreferences = MeetingLinkPreferences(applications: ["other": safariApp.path])
+equal(otherPreferences.application(for: URL(string: "https://example.org/call")!)?.path,
+      safariApp.path, "Other links can have an explicit app choice")
+check(otherPreferences.application(for: meetLink) == nil,
+      "an Other override does not replace an unset named provider")
+
 var defaultLinks: [URL] = []
 var appLinks: [URL] = []
 var selectedApps: [URL] = []
 var pendingOpen: ((Bool) -> Void)?
 var joinCompleted = false
+let defaultOpener = MeetingLinkOpener(
+    preferences: MeetingLinkPreferences(),
+    openDefault: { defaultLinks.append($0) },
+    openInApplication: { _, _, _ in failures.append("an unset preference must not launch a saved app") }
+)
+defaultOpener.open(meetLink) { joinCompleted = true }
+check(defaultLinks == [meetLink] && joinCompleted,
+      "Join respects macOS defaults even when Chrome and Safari Meet apps are installed")
 let linkOpener = MeetingLinkOpener(
-    applicationDirectories: [userApps],
+    preferences: savedPreferences,
     openDefault: { defaultLinks.append($0) },
     openInApplication: { link, app, completion in
         appLinks.append(link)
@@ -434,45 +401,62 @@ let linkOpener = MeetingLinkOpener(
         pendingOpen = completion
     }
 )
+defaultLinks = []
+joinCompleted = false
 linkOpener.open(meetLink) { joinCompleted = true }
-equal(appLinks, [meetLink], "Join sends the full meeting URL to the saved app")
-equal(selectedApps.map { $0.resolvingSymlinksInPath().path },
-      [chromeApp.resolvingSymlinksInPath().path], "Join selects the saved Chrome Meet app")
-check(defaultLinks.isEmpty, "an app launch does not also open the browser")
-check(!joinCompleted, "Join keeps its process alive until the app launch completes")
+equal(appLinks, [meetLink], "Join passes the full original URL to the chosen app")
+equal(selectedApps.map { $0.path }, [safariApp.path], "an explicit Safari choice wins even with Chrome installed")
+check(defaultLinks.isEmpty && !joinCompleted, "Join waits for the chosen app without also opening the default")
 pendingOpen?(true)
-check(joinCompleted && defaultLinks.isEmpty, "a successful app launch completes Join")
-
+check(joinCompleted && defaultLinks.isEmpty, "successful chosen-app launch completes Join")
 joinCompleted = false
 linkOpener.open(meetLink) { joinCompleted = true }
 pendingOpen?(false)
-equal(defaultLinks, [meetLink], "a failed app launch opens the original link in the browser")
-check(joinCompleted, "Join completes after falling back from a failed app launch")
-
-defaultLinks = []
-selectedApps = []
-for link in ["https://zoom.us/j/123", "https://teams.microsoft.com/l/meetup-join/test",
-             "https://meet.google.com.example.org/abc", "https://example.org/meet.google.com",
-             "file://meet.google.com/abc", "http://meet.google.com/abc",
-             "https://meet.google.com:8443/abc"] {
-    let url = URL(string: link)!
-    joinCompleted = false
-    linkOpener.open(url) { joinCompleted = true }
-    check(defaultLinks.last == url && joinCompleted,
-          "non-Meet URL uses the default handler: \(link)")
-}
-check(selectedApps.isEmpty, "other meeting providers never launch the Meet app")
-
-defaultLinks = []
-let noAppOpener = MeetingLinkOpener(
-    applicationDirectories: [unrelatedApps],
+check(defaultLinks == [meetLink] && joinCompleted, "a failed chosen app hands the original URL to macOS")
+let missingAppPreferences = MeetingLinkPreferences(applications: ["google_meet": "/missing/Meet.app"])
+let missingAppOpener = MeetingLinkOpener(preferences: missingAppPreferences,
     openDefault: { defaultLinks.append($0) },
-    openInApplication: { _, _, _ in failures.append("unrelated apps must not launch") }
-)
-joinCompleted = false
-noAppOpener.open(meetLink) { joinCompleted = true }
-check(defaultLinks == [meetLink] && joinCompleted,
-      "Meet uses the browser when no saved Meet app is installed")
+    openInApplication: { _, _, _ in failures.append("a removed app must not launch") })
+missingAppOpener.open(meetLink) {}
+equal(defaultLinks.count, 2, "a removed chosen app falls back to macOS")
+linkOpener.open(zoomLink) {}
+equal(selectedApps.last?.path, chromeApp.path, "Zoom uses its own explicitly selected app")
+pendingOpen?(true)
+linkOpener.open(teamsLink) {}
+equal(defaultLinks.last, teamsLink, "a Meet override does not affect an unset Teams setting")
+
+let chromeConfiguration = chromeWebAppConfiguration(info: chromeInfo, meetingURL: meetLink)
+for channel in ["com.google.Chrome.beta", "com.google.Chrome.canary"] {
+    let info: [String: Any] = [
+        "CFBundleIdentifier": "\(channel).app.saved-meet-app-id",
+        "CrBundleIdentifier": channel,
+        "CrAppModeShortcutID": "saved-meet-app-id",
+    ]
+    equal(chromeWebAppBrowserID(info: info), channel,
+          "a selected Chrome channel web app routes through its own browser: \(channel)")
+}
+check(chromeWebAppBrowserID(info: ["CFBundleIdentifier": "com.google.Chrome.beta",
+                                  "CrBundleIdentifier": "com.google.Chrome.beta"]) == nil,
+      "a selected native browser receives URLs normally instead of web-app flags")
+check(chromeConfiguration?.createsNewApplicationInstance == true,
+      "an explicitly chosen Chrome web app receives flags with Chrome already running")
+equal(chromeConfiguration?.arguments, [
+    "--app-id=saved-meet-app-id",
+    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
+], "a chosen Chrome web app receives the meeting URL rather than its home page")
+var profiledChromeInfo = chromeInfo
+profiledChromeInfo["CrAppModeUserDataDir"] = "/Users/test/Library/Application Support/Google/Chrome/Profile 2/Web Applications/_crx_saved-meet-app-id"
+profiledChromeInfo["CrAppModeProfileDir"] = "Profile 2"
+equal(chromeWebAppConfiguration(info: profiledChromeInfo, meetingURL: meetLink)?.arguments, [
+    "--app-id=saved-meet-app-id",
+    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
+    "--user-data-dir=/Users/test/Library/Application Support/Google/Chrome",
+    "--profile-directory=Profile 2",
+], "a chosen Chrome app retains the user data directory and profile recorded by its bundle")
+var missingID = chromeInfo
+missingID.removeValue(forKey: "CrAppModeShortcutID")
+check(chromeWebAppConfiguration(info: missingID, meetingURL: meetLink) == nil,
+      "incomplete Chrome web-app metadata falls back rather than launching an empty app")
 try! FileManager.default.removeItem(at: appFixtures)
 
 var alarmExits: [Int32] = []
