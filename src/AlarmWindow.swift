@@ -11,12 +11,15 @@ enum AlarmOutcome: String {
 final class AlarmWindow {
     private var window: NSWindow?
     private let onFinish: (AlarmOutcome) -> Void
+    private let onJoin: () -> Void
     private let meetingURL: String
     private var joining = false
 
-    init(meetingURL: String, onFinish: @escaping (AlarmOutcome) -> Void) {
+    init(meetingURL: String, onJoin: @escaping () -> Void,
+         onFinish: @escaping (AlarmOutcome) -> Void) {
         self.meetingURL = meetingURL
         self.onFinish = onFinish
+        self.onJoin = onJoin
     }
 
     func show(headline: String, detail: String) {
@@ -85,6 +88,7 @@ final class AlarmWindow {
             return
         }
         joining = true
+        onJoin()
         MeetingLinkOpener().open(url) { [onFinish] in onFinish(.joined) }
     }
 }

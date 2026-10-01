@@ -9,6 +9,8 @@ final class AlarmRunner: NSObject, NSApplicationDelegate {
     private let title: String
     private let start: Date
     private let url: String
+    private let terminate: (Int32) -> Void
+    private let recordOutcome: (String) -> Void
 
     private var window: AlarmWindow?
     private let loop = SoundLoop()
@@ -16,13 +18,18 @@ final class AlarmRunner: NSObject, NSApplicationDelegate {
     private var lockHandle: FileHandle?
     private var primary = false
     private var finished = false
+    private var joining = false
     private var signalSources: [DispatchSourceSignal] = []
 
-    init(cfg: Config, title: String, start: Date, url: String) {
+    init(cfg: Config, title: String, start: Date, url: String,
+         terminate: @escaping (Int32) -> Void = { exit($0) },
+         recordOutcome: @escaping (String) -> Void = { log($0, name: "alarm") }) {
         self.cfg = cfg
         self.title = title
         self.start = start
         self.url = url
+        self.terminate = terminate
+        self.recordOutcome = recordOutcome
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -64,7 +71,9 @@ final class AlarmRunner: NSObject, NSApplicationDelegate {
     }
 
     private func showWindow() {
-        let window = AlarmWindow(meetingURL: url) { [weak self] outcome in
+        let window = AlarmWindow(meetingURL: url, onJoin: { [weak self] in
+            self?.beginJoin()
+        }) { [weak self] outcome in
             self?.finish(outcome.rawValue)
         }
         window.show(headline: cfg.message, detail: title)
@@ -73,10 +82,10 @@ final class AlarmRunner: NSObject, NSApplicationDelegate {
         guard cfg.maxAlarmSeconds > 0 else { return }
         let remaining = start.addingTimeInterval(cfg.maxAlarmSeconds).timeIntervalSinceNow
         if remaining <= 0 {
-            finish("stopped at max_alarm_seconds")
+            giveUp()
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + remaining) { [weak self] in
-                self?.finish("stopped at max_alarm_seconds")
+                self?.giveUp()
             }
         }
     }
@@ -107,9 +116,25 @@ final class AlarmRunner: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func finish(_ reason: String) {
+    func beginJoin() {
+        joining = true
+        stopAlarm()
+    }
+
+    func giveUp() {
+        guard !joining else { return }
+        finish("stopped at max_alarm_seconds")
+    }
+
+    func finish(_ reason: String) {
         if finished { return }
         finished = true
+        stopAlarm()
+        recordOutcome(reason)
+        terminate(0)
+    }
+
+    private func stopAlarm() {
         window?.close()
         window = nil
         loop.stop()
@@ -118,9 +143,8 @@ final class AlarmRunner: NSObject, NSApplicationDelegate {
                                       alarmLevel: cfg.volume) {
             Volume.set(level: target.level, muted: target.muted)
         }
+        savedVolume = nil
         try? lockHandle?.close()
         lockHandle = nil
-        log(reason, name: "alarm")
-        exit(0)
     }
 }

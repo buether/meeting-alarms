@@ -388,6 +388,38 @@ check(chromeMeetArguments(info: missingID, meetingURL: meetLink) == nil,
 writeWebApp(unrelatedApps.appendingPathComponent("Missing ID.app"), info: missingID)
 check(findMeetWebApp(in: [unrelatedApps]) == nil,
       "a Chrome app without a shortcut ID is skipped during discovery")
+let sharedProfileState: [String: Any] = ["app_shims": ["saved-meet-app-id": [
+    "installed_profiles": ["Default", "Profile 2"],
+    "last_active_profiles": ["Deleted Profile", "Profile 2"],
+]]]
+equal(chromeMeetArguments(info: chromeInfo, meetingURL: meetLink, localState: sharedProfileState), [
+    "--app-id=saved-meet-app-id",
+    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
+    "--profile-directory=Profile 2",
+], "a shared Chrome app uses an installed last-active profile, excluding stale profiles")
+var explicitProfileInfo = chromeInfo
+explicitProfileInfo["CrAppModeProfileDir"] = "Default"
+equal(chromeMeetArguments(info: explicitProfileInfo, meetingURL: meetLink, localState: sharedProfileState)?.last,
+      "--profile-directory=Default", "explicit saved profile metadata takes priority over shared state")
+let staleProfileState: [String: Any] = ["app_shims": ["saved-meet-app-id": [
+    "installed_profiles": ["Profile 2", "Default"],
+    "last_active_profiles": ["Deleted Profile"],
+]]]
+equal(chromeMeetArguments(info: chromeInfo, meetingURL: meetLink, localState: staleProfileState)?.last,
+      "--profile-directory=Default", "stale shared profile state chooses an installed profile deterministically")
+equal(chromeMeetArguments(info: chromeInfo, meetingURL: meetLink, localState: ["app_shims": "malformed"]), [
+    "--app-id=saved-meet-app-id",
+    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
+], "unreadable or malformed shared state leaves profile selection to Chrome")
+let chromeConfiguration = chromeMeetConfiguration(info: chromeInfo, meetingURL: meetLink)
+check(chromeConfiguration?.createsNewApplicationInstance == true,
+      "Chrome gets a new launch instance so an already running browser receives the arguments")
+equal(chromeConfiguration?.arguments, [
+    "--app-id=saved-meet-app-id",
+    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
+], "the macOS launch configuration carries Chrome's app ID and URL override")
+check(chromeMeetConfiguration(info: missingID, meetingURL: meetLink) == nil,
+      "missing Chrome app metadata cannot create a launch configuration")
 var defaultLinks: [URL] = []
 var appLinks: [URL] = []
 var selectedApps: [URL] = []
@@ -442,6 +474,28 @@ noAppOpener.open(meetLink) { joinCompleted = true }
 check(defaultLinks == [meetLink] && joinCompleted,
       "Meet uses the browser when no saved Meet app is installed")
 try! FileManager.default.removeItem(at: appFixtures)
+
+var alarmExits: [Int32] = []
+var alarmOutcomes: [String] = []
+let joiningAlarm = AlarmRunner(cfg: cfg, title: "Join test", start: now, url: meetLink.absoluteString,
+                              terminate: { alarmExits.append($0) },
+                              recordOutcome: { alarmOutcomes.append($0) })
+joiningAlarm.beginJoin()
+joiningAlarm.giveUp()
+check(alarmExits.isEmpty && alarmOutcomes.isEmpty,
+      "the alarm deadline cannot end a pending Join handoff")
+joiningAlarm.finish("joined")
+equal(alarmExits, [0], "the alarm exits after Join handoff completes")
+equal(alarmOutcomes, ["joined"], "a pending Join keeps its outcome when the deadline expires")
+joiningAlarm.giveUp()
+joiningAlarm.finish("dismissed")
+equal(alarmExits, [0], "late finish callbacks cannot exit the alarm twice")
+
+alarmOutcomes = []
+let idleAlarm = AlarmRunner(cfg: cfg, title: "Deadline test", start: now, url: "",
+                           terminate: { _ in }, recordOutcome: { alarmOutcomes.append($0) })
+idleAlarm.giveUp()
+equal(alarmOutcomes, ["stopped at max_alarm_seconds"], "an untouched alarm still stops at its deadline")
 
 // MARK: - Report
 

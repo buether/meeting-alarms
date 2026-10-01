@@ -12,6 +12,8 @@ of something, and is gone by the time you surface.
   Google Meet links open in a saved Chrome or Safari Meet app when available,
   with Chrome preferred. Without a saved app, or if launching it fails, the
   link opens in your default browser.
+  Shared Chrome apps use a recorded active profile when readable; otherwise
+  Chrome chooses an installed profile.
 - Reads Calendar.app, so every account your Mac already syncs is covered.
 - Silent for all-day events and invitations you declined.
 - Nothing to sign in to, no API keys, nothing leaves the Mac.

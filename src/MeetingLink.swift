@@ -1,20 +1,53 @@
 import AppKit
 
-func chromeMeetArguments(info: [String: Any], meetingURL: URL) -> [String]? {
+private func chromeUserDataDirectory(info: [String: Any]) -> URL? {
+    guard let appData = info["CrAppModeUserDataDir"] as? String, !appData.isEmpty else {
+        return nil
+    }
+    return URL(fileURLWithPath: appData).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+}
+
+func chromeMeetArguments(info: [String: Any], meetingURL: URL,
+                         localState: [String: Any]? = nil) -> [String]? {
     guard let appID = info["CrAppModeShortcutID"] as? String, !appID.isEmpty else { return nil }
     var arguments = [
         "--app-id=\(appID)",
         "--app-launch-url-for-shortcuts-menu-item=\(meetingURL.absoluteString)",
     ]
-    if let appData = info["CrAppModeUserDataDir"] as? String, !appData.isEmpty {
-        let userData = URL(fileURLWithPath: appData).deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
+    if let userData = chromeUserDataDirectory(info: info) {
         arguments.append("--user-data-dir=\(userData.path)")
     }
     if let profile = info["CrAppModeProfileDir"] as? String, !profile.isEmpty {
         arguments.append("--profile-directory=\(profile)")
+    } else if let shims = localState?["app_shims"] as? [String: Any],
+              let app = shims[appID] as? [String: Any],
+              let installed = app["installed_profiles"] as? [String] {
+        let profiles = Set(installed.filter { !$0.isEmpty })
+        let active = Set(app["last_active_profiles"] as? [String] ?? []).intersection(profiles)
+        if let profile = (active.isEmpty ? profiles : active).sorted().first {
+            arguments.append("--profile-directory=\(profile)")
+        }
     }
     return arguments
+}
+
+func chromeMeetConfiguration(info: [String: Any], meetingURL: URL,
+                             localState: [String: Any]? = nil) -> NSWorkspace.OpenConfiguration? {
+    guard let arguments = chromeMeetArguments(info: info, meetingURL: meetingURL,
+                                             localState: localState) else { return nil }
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.arguments = arguments
+    configuration.createsNewApplicationInstance = true
+    return configuration
+}
+
+private func chromeLocalState(info: [String: Any]) -> [String: Any]? {
+    guard let directory = chromeUserDataDirectory(info: info),
+          let data = try? Data(contentsOf: directory.appendingPathComponent("Local State")) else {
+        return nil
+    }
+    return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
 }
 
 private func appInfo(at app: URL) -> [String: Any]? {
@@ -76,22 +109,21 @@ private func openSavedMeetApp(_ url: URL, in app: URL, completion: @escaping (Bo
         completion(false)
         return
     }
-    let configuration = NSWorkspace.OpenConfiguration()
     let didOpen: (NSRunningApplication?, Error?) -> Void = { runningApp, error in
         DispatchQueue.main.async { completion(runningApp != nil && error == nil) }
     }
     if identifier.hasPrefix("com.google.Chrome.app.") {
-        guard let arguments = chromeMeetArguments(info: info, meetingURL: url),
+        guard let configuration = chromeMeetConfiguration(info: info, meetingURL: url,
+                                                          localState: chromeLocalState(info: info)),
               let chrome = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome")
         else {
             completion(false)
             return
         }
-        configuration.arguments = arguments
-        configuration.createsNewApplicationInstance = true
         NSWorkspace.shared.openApplication(at: chrome, configuration: configuration,
                                            completionHandler: didOpen)
     } else {
+        let configuration = NSWorkspace.OpenConfiguration()
         NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration,
                                 completionHandler: didOpen)
     }
