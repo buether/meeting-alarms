@@ -20,6 +20,8 @@ func helpText() -> String {
       full-screen app. Join opens the Zoom, Teams, Meet or Webex link; Dismiss
       stops it. Both put your volume and mute back. It gives up
       \(Int(d.maxAlarmSeconds / 60)) minutes after the start.
+      Google Meet links use a saved Chrome or Safari Meet app (Chrome first).
+      Without a saved app, or if launching it fails, they use the default browser.
 
     WHICH MEETINGS RING
       Rings:   someone other than you is on it, and you accepted or have not

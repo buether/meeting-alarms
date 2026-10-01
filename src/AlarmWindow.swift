@@ -12,6 +12,7 @@ final class AlarmWindow {
     private var window: NSWindow?
     private let onFinish: (AlarmOutcome) -> Void
     private let meetingURL: String
+    private var joining = false
 
     init(meetingURL: String, onFinish: @escaping (AlarmOutcome) -> Void) {
         self.meetingURL = meetingURL
@@ -78,10 +79,13 @@ final class AlarmWindow {
     @objc private func dismiss() { onFinish(.dismissed) }
 
     @objc private func join() {
-        if let url = URL(string: meetingURL) {
-            NSWorkspace.shared.open(url)
+        guard !joining else { return }
+        guard let url = URL(string: meetingURL) else {
+            onFinish(.joined)
+            return
         }
-        onFinish(.joined)
+        joining = true
+        MeetingLinkOpener().open(url) { [onFinish] in onFinish(.joined) }
     }
 }
 

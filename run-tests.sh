@@ -1,6 +1,6 @@
 #!/bin/bash
-# Builds and runs the unit tests. They cover the pure selection logic, so they
-# need no calendar, no permissions and no window server.
+# Builds and runs the unit tests for selection and meeting-link routing.
+# They need no calendar, no permissions and no window server.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"

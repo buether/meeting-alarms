@@ -9,6 +9,9 @@ of something, and is gone by the time you surface.
 - Wakes the display, raises the volume, speaks, and loops a sound.
 - The alarm window sits above every Space and full-screen app.
 - **Join** opens the Zoom, Teams, Meet or Webex link from the invitation.
+  Google Meet links open in a saved Chrome or Safari Meet app when available,
+  with Chrome preferred. Without a saved app, or if launching it fails, the
+  link opens in your default browser.
 - Reads Calendar.app, so every account your Mac already syncs is covered.
 - Silent for all-day events and invitations you declined.
 - Nothing to sign in to, no API keys, nothing leaves the Mac.

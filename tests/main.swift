@@ -294,6 +294,155 @@ check(pollerHealth(loaded: true, lastOk: nil, failingSince: nil, lastError: nil,
 equal(humanAge(45), "45s", "seconds read as seconds")
 equal(humanAge(11 * 86400), "11 days", "days read as days")
 
+// MARK: - Meeting links
+
+let appFixtures = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+    .appendingPathComponent("meeting-alarm-apps-\(UUID().uuidString)")
+let userApps = appFixtures.appendingPathComponent("User Applications")
+let systemApps = appFixtures.appendingPathComponent("System Applications")
+
+func writeWebApp(_ path: URL, info: [String: Any]) {
+    let contents = path.appendingPathComponent("Contents")
+    try! FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+    let plist = try! PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+    try! plist.write(to: contents.appendingPathComponent("Info.plist"))
+}
+
+let safariApp = userApps.appendingPathComponent("My Meetings.app")
+writeWebApp(safariApp, info: [
+    "CFBundleIdentifier": "com.apple.Safari.WebApp.test",
+    "WKManifestURL": "https://meet.google.com/_/MeetingsDesktopUi/manifest.json",
+])
+equal(findMeetWebApp(in: [userApps])?.resolvingSymlinksInPath().path,
+      safariApp.resolvingSymlinksInPath().path,
+      "a renamed Safari Meet app is found by its manifest URL")
+
+let chromeApp = userApps.appendingPathComponent("Chrome Apps.localized/Work Calls.app")
+let chromeInfo: [String: Any] = [
+    "CFBundleIdentifier": "com.google.Chrome.app.test",
+    "CrAppModeShortcutID": "saved-meet-app-id",
+    "CrAppModeShortcutURL": "https://meet.google.com/landing?lfhs=2",
+]
+writeWebApp(chromeApp, info: chromeInfo)
+equal(findMeetWebApp(in: [userApps])?.resolvingSymlinksInPath().path,
+      chromeApp.resolvingSymlinksInPath().path,
+      "a renamed Chrome Meet app in a browser subdirectory takes priority over Safari")
+let systemChromeApp = systemApps.appendingPathComponent("Meet.app")
+writeWebApp(systemChromeApp, info: chromeInfo)
+equal(findMeetWebApp(in: [userApps, systemApps])?.resolvingSymlinksInPath().path,
+      chromeApp.resolvingSymlinksInPath().path,
+      "a user-installed Chrome Meet app takes priority over a system copy")
+equal(findMeetWebApp(in: [systemApps])?.resolvingSymlinksInPath().path,
+      systemChromeApp.resolvingSymlinksInPath().path,
+      "a system-installed Chrome Meet app is found")
+let safariOnlyApps = appFixtures.appendingPathComponent("Safari Only")
+writeWebApp(safariOnlyApps.appendingPathComponent("Meet.app"), info: [
+    "CFBundleIdentifier": "com.apple.Safari.WebApp.test",
+    "WKManifestURL": "https://meet.google.com/_/MeetingsDesktopUi/manifest.json",
+])
+equal(findMeetWebApp(in: [safariOnlyApps, systemApps])?.resolvingSymlinksInPath().path,
+      systemChromeApp.resolvingSymlinksInPath().path,
+      "a system Chrome app takes priority over a user Safari app")
+
+let unrelatedApps = appFixtures.appendingPathComponent("Unrelated Applications")
+writeWebApp(unrelatedApps.appendingPathComponent("Google Meet.app"), info: [
+    "CFBundleIdentifier": "com.google.Chrome.app.calendar",
+    "CrAppModeShortcutURL": "https://calendar.google.com/",
+])
+writeWebApp(unrelatedApps.appendingPathComponent("Spoof.app"), info: [
+    "CFBundleIdentifier": "com.google.Chrome.app.spoof",
+    "CrAppModeShortcutURL": "https://meet.google.com.example.org/",
+])
+writeWebApp(unrelatedApps.appendingPathComponent("Native.app"), info: [
+    "CFBundleIdentifier": "org.example.native",
+    "CrAppModeShortcutURL": "https://meet.google.com/",
+])
+writeWebApp(unrelatedApps.appendingPathComponent("Container.app/Contents/Nested.app"),
+            info: chromeInfo)
+writeWebApp(unrelatedApps.appendingPathComponent("Broken.app"), info: chromeInfo)
+try! "not a plist".write(to: unrelatedApps.appendingPathComponent("Broken.app/Contents/Info.plist"),
+                        atomically: true, encoding: .utf8)
+check(findMeetWebApp(in: [unrelatedApps]) == nil,
+      "names, lookalike hosts, malformed plists and nested bundles do not select an app")
+check(findMeetWebApp(in: [appFixtures.appendingPathComponent("Missing")]) == nil,
+      "a missing applications directory falls back without failing")
+
+let meetLink = URL(string: "https://meet.google.com/abc-defg-hij?authuser=1#join")!
+equal(chromeMeetArguments(info: chromeInfo, meetingURL: meetLink), [
+    "--app-id=saved-meet-app-id",
+    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
+], "Chrome launches the saved app with the meeting URL as its launch override")
+var profiledChromeInfo = chromeInfo
+profiledChromeInfo["CrAppModeUserDataDir"] = "/Users/test/Library/Application Support/Google/Chrome/Profile 2/Web Applications/_crx_saved-meet-app-id"
+profiledChromeInfo["CrAppModeProfileDir"] = "Profile 2"
+equal(chromeMeetArguments(info: profiledChromeInfo, meetingURL: meetLink), [
+    "--app-id=saved-meet-app-id",
+    "--app-launch-url-for-shortcuts-menu-item=https://meet.google.com/abc-defg-hij?authuser=1#join",
+    "--user-data-dir=/Users/test/Library/Application Support/Google/Chrome",
+    "--profile-directory=Profile 2",
+], "Chrome keeps the saved app's user data directory and profile")
+var missingID = chromeInfo
+missingID.removeValue(forKey: "CrAppModeShortcutID")
+check(chromeMeetArguments(info: missingID, meetingURL: meetLink) == nil,
+      "a Chrome app with no shortcut ID cannot launch the meeting")
+writeWebApp(unrelatedApps.appendingPathComponent("Missing ID.app"), info: missingID)
+check(findMeetWebApp(in: [unrelatedApps]) == nil,
+      "a Chrome app without a shortcut ID is skipped during discovery")
+var defaultLinks: [URL] = []
+var appLinks: [URL] = []
+var selectedApps: [URL] = []
+var pendingOpen: ((Bool) -> Void)?
+var joinCompleted = false
+let linkOpener = MeetingLinkOpener(
+    applicationDirectories: [userApps],
+    openDefault: { defaultLinks.append($0) },
+    openInApplication: { link, app, completion in
+        appLinks.append(link)
+        selectedApps.append(app)
+        pendingOpen = completion
+    }
+)
+linkOpener.open(meetLink) { joinCompleted = true }
+equal(appLinks, [meetLink], "Join sends the full meeting URL to the saved app")
+equal(selectedApps.map { $0.resolvingSymlinksInPath().path },
+      [chromeApp.resolvingSymlinksInPath().path], "Join selects the saved Chrome Meet app")
+check(defaultLinks.isEmpty, "an app launch does not also open the browser")
+check(!joinCompleted, "Join keeps its process alive until the app launch completes")
+pendingOpen?(true)
+check(joinCompleted && defaultLinks.isEmpty, "a successful app launch completes Join")
+
+joinCompleted = false
+linkOpener.open(meetLink) { joinCompleted = true }
+pendingOpen?(false)
+equal(defaultLinks, [meetLink], "a failed app launch opens the original link in the browser")
+check(joinCompleted, "Join completes after falling back from a failed app launch")
+
+defaultLinks = []
+selectedApps = []
+for link in ["https://zoom.us/j/123", "https://teams.microsoft.com/l/meetup-join/test",
+             "https://meet.google.com.example.org/abc", "https://example.org/meet.google.com",
+             "file://meet.google.com/abc", "http://meet.google.com/abc",
+             "https://meet.google.com:8443/abc"] {
+    let url = URL(string: link)!
+    joinCompleted = false
+    linkOpener.open(url) { joinCompleted = true }
+    check(defaultLinks.last == url && joinCompleted,
+          "non-Meet URL uses the default handler: \(link)")
+}
+check(selectedApps.isEmpty, "other meeting providers never launch the Meet app")
+
+defaultLinks = []
+let noAppOpener = MeetingLinkOpener(
+    applicationDirectories: [unrelatedApps],
+    openDefault: { defaultLinks.append($0) },
+    openInApplication: { _, _, _ in failures.append("unrelated apps must not launch") }
+)
+joinCompleted = false
+noAppOpener.open(meetLink) { joinCompleted = true }
+check(defaultLinks == [meetLink] && joinCompleted,
+      "Meet uses the browser when no saved Meet app is installed")
+try! FileManager.default.removeItem(at: appFixtures)
+
 // MARK: - Report
 
 if failures.isEmpty {
