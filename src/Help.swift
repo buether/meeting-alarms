@@ -20,6 +20,9 @@ func helpText() -> String {
       full-screen app. Join opens the Zoom, Teams, Meet or Webex link; Dismiss
       stops it. Both put your volume and mute back. It gives up
       \(Int(d.maxAlarmSeconds / 60)) minutes after the start.
+      Your Mac's default app handles links. The corner gear opens Meeting Link
+      Settings, where you can choose apps for each meeting service. Choices
+      save immediately; unavailable apps fall back to your Mac's default.
 
     WHICH MEETINGS RING
       Rings:   someone other than you is on it, and you accepted or have not
@@ -45,6 +48,7 @@ func helpText() -> String {
       status              the check above
       test                ring a test alarm through the real path
       calendars           calendar titles and account names, for the settings
+      settings            choose apps for meeting links
       poll --dry-run      what this minute's poll would do, ringing nothing
       install             write and load the two background jobs
       uninstall           remove them; config, history and logs stay
@@ -85,6 +89,9 @@ func helpText() -> String {
       expected_source     null
                           account name that must stay signed in, from
                           `calendars`
+      meeting_apps        {}
+                          optional app paths per meeting service; the corner
+                          gear or `settings` command saves these for you
       poll_seconds        \(Int(d.pollSeconds))
                           seconds between calendar checks, in whole minutes
 

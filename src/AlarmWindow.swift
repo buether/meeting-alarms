@@ -11,11 +11,16 @@ enum AlarmOutcome: String {
 final class AlarmWindow {
     private var window: NSWindow?
     private let onFinish: (AlarmOutcome) -> Void
+    private let onJoin: () -> Void
     private let meetingURL: String
+    private var joining = false
+    private var settings: MeetingLinkSettingsWindow?
 
-    init(meetingURL: String, onFinish: @escaping (AlarmOutcome) -> Void) {
+    init(meetingURL: String, onJoin: @escaping () -> Void,
+         onFinish: @escaping (AlarmOutcome) -> Void) {
         self.meetingURL = meetingURL
         self.onFinish = onFinish
+        self.onJoin = onJoin
     }
 
     func show(headline: String, detail: String) {
@@ -62,6 +67,15 @@ final class AlarmWindow {
         }
         content.addSubview(dismissButton)
 
+        let settingsButton = NSButton(image: NSImage(systemSymbolName: "gearshape",
+            accessibilityDescription: "Meeting link settings")!,
+            target: self, action: #selector(showSettings))
+        settingsButton.isBordered = false
+        settingsButton.contentTintColor = .white
+        settingsButton.toolTip = "Meeting link settings"
+        settingsButton.frame = NSRect(x: 516, y: 30, width: 28, height: 28)
+        content.addSubview(settingsButton)
+
         window.contentView = content
         window.center()
         window.makeKeyAndOrderFront(nil)
@@ -71,17 +85,28 @@ final class AlarmWindow {
     }
 
     func close() {
+        settings?.close()
+        settings = nil
         window?.orderOut(nil)
         window = nil
     }
 
     @objc private func dismiss() { onFinish(.dismissed) }
 
+    @objc private func showSettings() {
+        if settings == nil { settings = MeetingLinkSettingsWindow(level: .screenSaver) }
+        settings?.show()
+    }
+
     @objc private func join() {
-        if let url = URL(string: meetingURL) {
-            NSWorkspace.shared.open(url)
+        guard !joining else { return }
+        guard let url = URL(string: meetingURL) else {
+            onFinish(.joined)
+            return
         }
-        onFinish(.joined)
+        joining = true
+        onJoin()
+        MeetingLinkOpener().open(url) { [onFinish] in onFinish(.joined) }
     }
 }
 

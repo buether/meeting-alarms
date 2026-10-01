@@ -9,5 +9,6 @@
   "sound": "/System/Library/PrivateFrameworks/ToneLibrary.framework/Versions/A/Resources/Ringtones/Silk.m4r",
   "fallback_sound": "/System/Library/Sounds/Sosumi.aiff",
   "include_calendars": [],
-  "expected_source": null
+  "expected_source": null,
+  "meeting_apps": {}
 }

@@ -9,6 +9,8 @@ of something, and is gone by the time you surface.
 - Wakes the display, raises the volume, speaks, and loops a sound.
 - The alarm window sits above every Space and full-screen app.
 - **Join** opens the Zoom, Teams, Meet or Webex link from the invitation.
+  Your Mac's default app handles links unless you choose an override in
+  **Meeting Link Settings**, available from the alarm's corner gear.
 - Reads Calendar.app, so every account your Mac already syncs is covered.
 - Silent for all-day events and invitations you declined.
 - Nothing to sign in to, no API keys, nothing leaves the Mac.
@@ -121,6 +123,7 @@ meeting-alarm status                check your setup: poller health, watched cal
 meeting-alarm poll --dry-run        what this minute's poll would do, without ringing anything
 meeting-alarm test                  ring a test alarm
 meeting-alarm calendars             calendar titles and account names EventKit can see
+meeting-alarm settings              choose apps for meeting links
 meeting-alarm install               write and load the two LaunchAgents for wherever this binary lives
 meeting-alarm uninstall             unload and remove them; logs and history stay
 meeting-alarm help                  most of this README, in the terminal
@@ -131,6 +134,18 @@ meeting-alarm help                  most of this README, in the terminal
 `poll.log`, `alarm.log` and `launchd.log` are in `~/Library/Logs/meeting-alarm/`.
 
 ## Settings
+
+Click the gear in the alarm's bottom-right corner, or run `meeting-alarm settings`,
+to choose an app for Google Meet, Zoom, Teams, Webex or other links. Each starts
+with **macOS default**. **Choose app…** lets you pick a browser, meeting app or
+saved web app from your Mac, including apps in `~/Applications/Chrome Apps.localized`.
+Choices save immediately and apply to the next Join click, including the current
+alarm. If a chosen app is removed or fails to launch, the original URL goes to
+your Mac's default handler. Selecting **macOS default** removes that override.
+
+Chrome web apps shared across profiles use Chrome's profile selection when the
+saved app does not name a specific profile, so they may open in another account.
+Meeting Alarm does not read Chrome's private profile preferences.
 
 `meeting-alarm install` writes a config file on first run at
 `~/Library/Application Support/meeting-alarm/config.json`, outside the install
@@ -155,6 +170,7 @@ while working on the code and is not committed.
 | `include_calendars` | `[]` | Calendar titles to watch, e.g. `["Work"]`. Empty watches all of them. Exact and case-sensitive; `status` shows which calendars are watched and flags a name that matches none. |
 | `fallback_sound` | Sosumi | Used when `sound` is not on disk. With neither, the alarm still speaks and shows the window. |
 | `expected_source` | `null` | Account name that must still be present, so a signed-out account is reported rather than looking like an empty calendar. |
+| `meeting_apps` | `{}` | Optional app paths keyed by `google_meet`, `zoom`, `teams`, `webex` or `other`. For example, `{"google_meet": "/Users/you/Applications/Google Meet.app"}`. The settings window writes these and preserves other config keys. |
 | `poll_seconds` | `60` | Seconds between calendar checks. Rounds to whole minutes. |
 
 To fill in `include_calendars` or `expected_source`, list what EventKit sees:
