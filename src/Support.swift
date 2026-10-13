@@ -182,6 +182,7 @@ struct State {
     var lastFailureNotice: Double = 0
     var lastCalendarsCheck: Double = 0
     var polls: Int = 0
+    var accounts: [String: AccountRecord] = [:]
 
     static func load() -> State {
         var state = State()
@@ -203,6 +204,15 @@ struct State {
         state.lastFailureNotice = (raw["last_failure_notice"] as? NSNumber)?.doubleValue ?? 0
         state.lastCalendarsCheck = (raw["last_calendars_check"] as? NSNumber)?.doubleValue ?? 0
         state.polls = (raw["polls"] as? NSNumber)?.intValue ?? 0
+        for (id, value) in raw["accounts"] as? [String: [String: Any]] ?? [:] {
+            state.accounts[id] = AccountRecord(
+                title: value["title"] as? String ?? "(unnamed)",
+                calendars: value["calendars"] as? [String] ?? [],
+                local: (value["local"] as? NSNumber)?.boolValue ?? false,
+                firstSeen: (value["first_seen"] as? NSNumber)?.doubleValue ?? 0,
+                lastSeen: (value["last_seen"] as? NSNumber)?.doubleValue ?? 0,
+                newestChange: (value["newest_change"] as? NSNumber)?.doubleValue)
+        }
         return state
     }
 
@@ -214,6 +224,11 @@ struct State {
             "last_failure_notice": lastFailureNotice,
             "last_calendars_check": lastCalendarsCheck,
             "polls": polls,
+            "accounts": accounts.mapValues {
+                ["title": $0.title, "calendars": $0.calendars, "local": $0.local,
+                 "first_seen": $0.firstSeen, "last_seen": $0.lastSeen,
+                 "newest_change": $0.newestChange ?? NSNull()] as [String: Any]
+            },
         ]
         raw["last_ok"] = lastOk ?? NSNull()
         raw["failing_since"] = failingSince ?? NSNull()

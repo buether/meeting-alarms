@@ -57,6 +57,11 @@ times. Every poll ever logged was an install or a kickstart. StartCalendarInterv
 jobs still fire in that mode, so the poller now runs every minute by calendar.
 When checking something like this, zsh's `log` is a builtin: use /usr/bin/log.
 
+The menu bar agent (RunAtLoad, KeepAlive) hit the same on-demand-only mode:
+launchd never started it on its own, so on a Mac in that state the bell never
+appeared. install now kickstarts it, and each poll starts it if it is loaded but
+not running, since a calendar-scheduled poll still runs in that mode.
+
 The cdhash theory of the Calendar grant is not what was observed. Rebuilds,
 the move to the Cellar and even fresh bundle identifiers mostly kept access
 without a prompt, yet one rebuild did prompt. Treat a prompt as possible after

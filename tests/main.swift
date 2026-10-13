@@ -567,6 +567,88 @@ let idleAlarm = AlarmRunner(cfg: cfg, title: "Deadline test", start: now, url: "
 idleAlarm.giveUp()
 equal(alarmOutcomes, ["stopped at max_alarm_seconds"], "an untouched alarm still stops at its deadline")
 
+// MARK: - Accounts
+// A removed or disabled account just vanishes from EventKit, so the poller
+// remembers accounts and reports one that goes missing.
+
+let work = LiveAccount(id: "W1", title: "Work Google", calendars: ["Work"], local: false)
+let home = LiveAccount(id: "H1", title: "iCloud", calendars: ["Family"], local: false)
+let t0 = 1_800_000_000.0
+let seen = updateAccounts([:], live: [work, home], now: t0)
+equal(seen["W1"]?.firstSeen, t0, "a new account is remembered from now")
+check(accountProblems(seen, now: t0 + 60, expectedSource: nil).isEmpty, "accounts present are fine")
+
+let afterSignOut = updateAccounts(seen, live: [home], now: t0 + 300)
+equal(afterSignOut["W1"]?.lastSeen, t0, "a vanished account keeps its last sighting")
+check(accountProblems(afterSignOut, now: t0 + 300, expectedSource: nil).isEmpty,
+      "a brief absence is not yet a problem")
+let goneLater = accountProblems(afterSignOut, now: t0 + accountGoneAfterSeconds + 1, expectedSource: nil)
+if case .gone(let title, let calendars, _)? = goneLater.first {
+    equal(title, "Work Google", "the gone account is named")
+    equal(calendars, ["Work"], "the gone account's calendars are named")
+} else { check(false, "an account missing past the grace period is reported gone") }
+check(goneLater.first?.line.hasPrefix("ACCOUNT GONE") == true, "gone reads in capitals")
+
+let back = updateAccounts(afterSignOut, live: [work, home], now: t0 + 900)
+check(accountProblems(back, now: t0 + 960, expectedSource: nil).isEmpty, "an account that returns is fine again")
+let readded = updateAccounts(afterSignOut,
+    live: [LiveAccount(id: "W2", title: "Work Google", calendars: ["Work"], local: false), home],
+    now: t0 + 900)
+check(readded["W1"] == nil, "an account removed and added back replaces its old record")
+check(accountProblems(readded, now: t0 + 960, expectedSource: nil).isEmpty,
+      "a re-added account is not reported gone")
+
+check(accountProblems(seen, now: t0, expectedSource: "Work Google").isEmpty,
+      "expected_source naming a present account is fine")
+equal(accountProblems(seen, now: t0, expectedSource: "Exchange"),
+      [.expectedMissing(name: "Exchange")], "expected_source naming no account is reported")
+
+var record = seen["W1"]!
+record.newestChange = t0 - 3 * 86400
+check(!accountActivityLine(record, now: t0).quiet, "three quiet days is normal")
+record.newestChange = t0 - 20 * 86400
+check(accountActivityLine(record, now: t0).quiet, "twenty quiet days is worth a look")
+record.local = true
+check(!accountActivityLine(record, now: t0).quiet, "on-this-Mac calendars are never quiet")
+let withActivity = updateAccounts(seen, live: [work], now: t0 + 60, activity: ["W1": t0 - 100])
+equal(withActivity["W1"]?.newestChange, t0 - 100, "activity is recorded when scanned")
+equal(updateAccounts(withActivity, live: [work], now: t0 + 120)["W1"]?.newestChange, t0 - 100,
+      "activity is kept between scans")
+
+// MARK: - Settings
+
+let configScratch = FileManager.default.temporaryDirectory
+    .appendingPathComponent("meeting-alarm-settings-\(getpid()).json")
+try? FileManager.default.removeItem(at: configScratch)
+try! ConfigFile.set("volume", 40, at: configScratch)
+try! ConfigFile.set("message", "Go", at: configScratch)
+try! ConfigFile.set("expected_source", nil, at: configScratch)
+let written = try! JSONSerialization.jsonObject(with: Data(contentsOf: configScratch)) as! [String: Any]
+equal(written["volume"] as? Int, 40, "a saved setting is written")
+equal(written["message"] as? String, "Go", "saving one setting keeps the others")
+check(written["expected_source"] is NSNull, "clearing a setting writes null")
+try! "{\"volume\": 10, \"someone_elses_key\": true}".write(to: configScratch, atomically: true, encoding: .utf8)
+try! ConfigFile.set("speak", false, at: configScratch)
+let merged = try! JSONSerialization.jsonObject(with: Data(contentsOf: configScratch)) as! [String: Any]
+check(merged["someone_elses_key"] as? Bool == true && merged["volume"] as? Int == 10,
+      "keys the window does not know about survive a save")
+try! "not json".write(to: configScratch, atomically: true, encoding: .utf8)
+check((try? ConfigFile.set("speak", true, at: configScratch)) == nil, "a broken config is not overwritten")
+equal(try! String(contentsOf: configScratch, encoding: .utf8), "not json", "a broken config is left as it was")
+try? FileManager.default.removeItem(at: configScratch)
+
+// An empty include_calendars means every calendar, so unticking the last box
+// must never write [].
+equal(includeAfterToggle(["Work", "Family"], title: "Family", on: false), ["Work"], "unticking removes one")
+equal(includeAfterToggle(["Work"], title: "Family", on: true), ["Family", "Work"], "ticking adds one")
+check(includeAfterToggle(["Work"], title: "Work", on: false) == nil,
+      "unticking the last calendar is refused rather than meaning all")
+equal(includeAfterWatchAll(true, allTitles: ["Work", "Family"]), [], "watch every calendar is []")
+equal(includeAfterWatchAll(false, allTitles: ["Work", "Family", "Work"]), ["Family", "Work"],
+      "switching off watch-all starts with every calendar ticked")
+equal(pollIntervalChoices(current: 60), [1, 2, 5, 10, 15], "the usual intervals are offered")
+equal(pollIntervalChoices(current: 420), [1, 2, 5, 7, 10, 15], "a custom interval stays selectable")
+
 // MARK: - Report
 
 if failures.isEmpty {

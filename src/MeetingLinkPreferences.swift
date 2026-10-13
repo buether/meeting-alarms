@@ -32,9 +32,7 @@ struct MeetingLinkPreferences {
     var applications: [String: String] = [:]
     var chromeProfiles: [String: String] = [:]
 
-    static var configURL: URL {
-        Paths.configPath ?? Paths.stateDir.appendingPathComponent("config.json")
-    }
+    static var configURL: URL { ConfigFile.url }
 
     static func load(at path: URL = configURL) -> MeetingLinkPreferences {
         guard let data = try? Data(contentsOf: path),
@@ -78,24 +76,14 @@ struct MeetingLinkPreferences {
     }
 
     private static func updateConfig(at path: URL, update: (inout [String: Any]) -> Void) throws {
-        var raw: [String: Any] = [:]
-        if FileManager.default.fileExists(atPath: path.path) {
-            let data = try Data(contentsOf: path)
-            guard let existing = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw MeetingLinkSettingsError.invalidConfig
+        try ConfigFile.update(at: path) { raw in
+            for key in ["meeting_apps", "meeting_app_profiles"] {
+                if let existing = raw[key], !(existing is [String: Any]) {
+                    throw MeetingLinkSettingsError.invalidConfig
+                }
             }
-            raw = existing
+            update(&raw)
         }
-        for key in ["meeting_apps", "meeting_app_profiles"] {
-            if let existing = raw[key], !(existing is [String: Any]) {
-                throw MeetingLinkSettingsError.invalidConfig
-            }
-        }
-        update(&raw)
-        let data = try JSONSerialization.data(withJSONObject: raw, options: [.prettyPrinted, .sortedKeys])
-        try FileManager.default.createDirectory(at: path.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try data.write(to: path, options: .atomic)
     }
 
     func application(for url: URL) -> URL? {
@@ -116,17 +104,4 @@ func isChromeProfileDirectory(_ path: String) -> Bool {
     var directory: ObjCBool = false
     return FileManager.default.fileExists(atPath: profile.path, isDirectory: &directory)
         && directory.boolValue
-}
-
-enum MeetingLinkSettingsError: LocalizedError {
-    case invalidConfig, invalidProfile
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidConfig:
-            return "The config file is not a JSON object with valid meeting app settings. Fix it before saving."
-        case .invalidProfile:
-            return "Paste the full Profile Path from chrome://version in your chosen Chrome profile. That folder must exist on this Mac."
-        }
-    }
 }

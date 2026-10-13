@@ -14,7 +14,7 @@ final class AlarmWindow {
     private let onJoin: () -> Void
     private let meetingURL: String
     private var joining = false
-    private var settings: MeetingLinkSettingsWindow?
+    private var settings: SettingsWindow?
 
     init(meetingURL: String, onJoin: @escaping () -> Void,
          onFinish: @escaping (AlarmOutcome) -> Void) {
@@ -68,11 +68,11 @@ final class AlarmWindow {
         content.addSubview(dismissButton)
 
         let settingsButton = NSButton(image: NSImage(systemSymbolName: "gearshape",
-            accessibilityDescription: "Meeting link settings")!,
+            accessibilityDescription: "Settings")!,
             target: self, action: #selector(showSettings))
         settingsButton.isBordered = false
         settingsButton.contentTintColor = .white
-        settingsButton.toolTip = "Meeting link settings"
+        settingsButton.toolTip = "Settings"
         settingsButton.frame = NSRect(x: 516, y: 30, width: 28, height: 28)
         content.addSubview(settingsButton)
 
@@ -94,7 +94,7 @@ final class AlarmWindow {
     @objc private func dismiss() { onFinish(.dismissed) }
 
     @objc private func showSettings() {
-        if settings == nil { settings = MeetingLinkSettingsWindow(level: .screenSaver) }
+        if settings == nil { settings = SettingsWindow(level: .screenSaver) }
         settings?.show()
     }
 

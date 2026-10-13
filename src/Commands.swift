@@ -134,10 +134,17 @@ func poll(dryRun: Bool, nowOverride: Date?, eventsFile: String?) -> Int32 {
         // before the lookback comes back too.
         let window = fireWindow(now: now, cfg: cfg)
         events = within(events, window.lo, window.hi)
-        if cfg.expectedSource != nil,
-           now.timeIntervalSince1970 - state.lastCalendarsCheck > 3600 {
-            try CalendarStore.checkCalendars(cfg: cfg)
-            state.lastCalendarsCheck = now.timeIntervalSince1970
+        // Accounts are tracked every poll so one that vanishes shows within
+        // minutes. Their activity costs a wider query, so that is hourly. Neither
+        // can fail the poll: a missing account must not silence the others.
+        if eventsFile == nil, let live = try? CalendarStore.liveAccounts() {
+            var activity: [String: Double]?
+            if now.timeIntervalSince1970 - state.lastCalendarsCheck > 3600 {
+                activity = try? CalendarStore.accountActivity(now: now)
+                if activity != nil { state.lastCalendarsCheck = now.timeIntervalSince1970 }
+            }
+            state.accounts = updateAccounts(state.accounts, live: live,
+                                            now: now.timeIntervalSince1970, activity: activity)
         }
     } catch {
         let message = "\(error)"
@@ -177,6 +184,7 @@ func poll(dryRun: Bool, nowOverride: Date?, eventsFile: String?) -> Int32 {
     }
 
     log("ok events=\(events.count) due=\(due.map(\.key))")
+    if eventsFile == nil { reviveMenuBar() }
     if !due.isEmpty {
         spawnAlarm(due, now: now)
         for event in due {
@@ -284,6 +292,9 @@ func status(eventsFile: String? = nil) -> Int32 {
     let plan = planCalendars(calendars, include: cfg.includeCalendars)
     if printCalendarPlan(plan, cfg: cfg) { problems += 1 }
 
+    print("")
+    problems += printAccounts(state: state, cfg: cfg, now: now, live: eventsFile == nil)
+
     // Ended meetings are history, not a prediction.
     let upcoming = sortByStart(events.filter { event in
         guard let end = event.endDate else { return true }
@@ -333,6 +344,47 @@ func listCalendars() -> Int32 {
         return 0
     }
     return printCalendarPlan(planCalendars(calendars, include: cfg.includeCalendars), cfg: cfg) ? 1 : 0
+}
+
+/// The ACCOUNTS section: every account remembered or present now, its newest
+/// change, and anything gone. Returns the number of problems. `live` refreshes
+/// against EventKit first, so status is current even between polls.
+func printAccounts(state: State, cfg: Config, now: Date, live: Bool) -> Int {
+    var known = state.accounts
+    if live, let accounts = try? CalendarStore.liveAccounts() {
+        known = updateAccounts(known, live: accounts, now: now.timeIntervalSince1970,
+                               activity: try? CalendarStore.accountActivity(now: now))
+    }
+    let t = now.timeIntervalSince1970
+    let present = known.values.filter { t - $0.lastSeen <= accountGoneAfterSeconds }
+        .sorted { ($0.local ? 1 : 0, $0.title) < ($1.local ? 1 : 0, $1.title) }
+    print(present.isEmpty && known.isEmpty ? "ACCOUNTS   none seen yet" : "ACCOUNTS")
+    for record in present {
+        let activity = accountActivityLine(record, now: t)
+        let calendars = record.calendars.count == 1 ? "1 calendar" : "\(record.calendars.count) calendars"
+        print("  \(pad(record.title, 20)) \(pad(calendars, 12)) \(activity.text)")
+    }
+    let problems = accountProblems(known, now: t, expectedSource: cfg.expectedSource)
+    for problem in problems { print("  \(problem.line)") }
+    return problems.count
+}
+
+/// `accounts`: the ACCOUNTS section on its own. `--forget` drops accounts that
+/// are gone, for when one was removed on purpose.
+func accountsCommand(forget: Bool) -> Int32 {
+    let cfg = Config.load()
+    var state = State.load()
+    let now = Date()
+    if forget {
+        let t = now.timeIntervalSince1970
+        let gone = state.accounts.filter { t - $0.value.lastSeen > accountGoneAfterSeconds }
+        for id in gone.keys { state.accounts.removeValue(forKey: id) }
+        state.save(now: t, cfg: cfg)
+        print(gone.isEmpty ? "No gone accounts to forget."
+              : "Forgot \(gone.values.map(\.title).sorted().joined(separator: ", ")).")
+        print("")
+    }
+    return printAccounts(state: state, cfg: cfg, now: now, live: true) == 0 ? 0 : 1
 }
 
 func watchdog(maxAge: Double, wait: Double) -> Int32 {

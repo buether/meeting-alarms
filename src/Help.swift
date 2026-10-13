@@ -20,9 +20,8 @@ func helpText() -> String {
       full-screen app. Join opens the Zoom, Teams, Meet or Webex link; Dismiss
       stops it. Both put your volume and mute back. It gives up
       \(Int(d.maxAlarmSeconds / 60)) minutes after the start.
-      Your Mac's default app handles links. The corner gear opens Meeting Link
-      Settings, where you can choose apps for each meeting service. Choices
-      save immediately; unavailable apps fall back to your Mac's default.
+      Your Mac's default app handles links unless Settings names another app
+      per meeting service; an unavailable app falls back to the default.
 
     WHICH MEETINGS RING
       Rings:   someone other than you is on it, and you accepted or have not
@@ -35,11 +34,17 @@ func helpText() -> String {
 
     CHECK YOUR SETUP
       Run `meeting-alarm status` after installing and after any config change.
-      The menu bar bell shows recent calendar checks; a badge means attention
-      is needed. Hover for status or click for Settings. The listing shows:
+      The menu bar bell gets a badge when something needs attention: checks
+      failing or stalled, or a calendar account gone. Hover for the reason,
+      click for Settings. The listing shows:
         POLLER      "running" and a recent poll, or what is wrong in CAPITALS
         CALENDARS   every calendar: watched, not watched, or never rings,
                     plus NO MATCH for an include_calendars name that is wrong
+        ACCOUNTS    each calendar account and its newest change. ACCOUNT GONE
+                    when one has vanished (signed out, or Calendars switched
+                    off for it): its invites stop arriving. QUIET after 14
+                    days without a change, which can mean a signed-out
+                    account whose old events are still showing
         NEXT 8 HOURS  every event in every calendar, "rings" or "silent",
                     and why - so confirm what you expect to ring does, and
                     what you expect to stay quiet does
@@ -48,8 +53,10 @@ func helpText() -> String {
     COMMANDS
       status              the check above
       test                ring a test alarm through the real path
-      calendars           calendar titles and account names, for the settings
-      settings            choose apps and Chrome profiles for meeting links
+      calendars           which calendars are watched
+      accounts [--forget] calendar accounts and their health; --forget drops
+                          ones you removed on purpose
+      settings            every setting, in a window (also from the menu bar)
       menubar             show the persistent menu bar health indicator
       poll --dry-run      what this minute's poll would do, ringing nothing
       install             write and load the three background jobs
@@ -62,6 +69,9 @@ func helpText() -> String {
       watchdog            check the poller has succeeded lately (runs itself)
 
     SETTINGS
+      Easiest from the menu bar bell > Settings, or `meeting-alarm settings`:
+      every key below, saved as you change it.
+
       \(configPath)
       Written by `install`. Leave a key out for the default. Edits apply at the
       next poll; poll_seconds needs `install` again.
@@ -89,11 +99,11 @@ func helpText() -> String {
                           matches nothing, and lists the unwatched calendars'
                           events as silent.
       expected_source     null
-                          account name that must stay signed in, from
-                          `calendars`
+                          an account to report as missing even if it was never
+                          seen; accounts that were seen are tracked anyway
       meeting_apps        {}
-                          optional app paths per meeting service; the corner
-                          gear or `settings` command saves these for you
+                          optional app paths per meeting service, and
+                          meeting_app_profiles for Chrome web apps
       poll_seconds        \(Int(d.pollSeconds))
                           seconds between calendar checks, in whole minutes
 

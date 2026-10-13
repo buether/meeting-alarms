@@ -10,7 +10,7 @@ import Foundation
 //   test      Arm a one-off alarm for the next poll and kick the launchd job.
 //   status    Poller health, recent alarms, and upcoming candidates.
 //   calendars Calendar titles and account names EventKit can see.
-//   settings  Choose apps for meeting links.
+//   settings  Every setting, in a window.
 //   menubar   Show the persistent menu bar health indicator.
 //   watchdog  Warn if the poller has not succeeded recently.
 //   install   Write and load the LaunchAgents for wherever this binary is.
@@ -24,6 +24,7 @@ usage: meeting-alarm <command> [options]
   test
   status [--events-file PATH]
   calendars
+  accounts [--forget]
   settings
   menubar
   watchdog [--max-age SECONDS] [--wait SECONDS]
@@ -107,12 +108,24 @@ case "status":
 case "calendars":
     exit(listCalendars())
 
+case "accounts":
+    exit(accountsCommand(forget: isSet("--forget")))
+
 case "settings":
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
-    let settings = MeetingLinkSettingsWindow(onClose: { exit(0) })
+    let settings = SettingsWindow(onClose: { exit(0) })
+    if let path = option("--snapshot") {
+        do { try settings.snapshot(to: URL(fileURLWithPath: path)) } catch { printErr("\(error)"); exit(1) }
+        exit(0)
+    }
     settings.show()
     withExtendedLifetime(settings) { app.run() }
+
+case "menubar" where isSet("--check"):
+    let health = menuBarHealth()
+    print("\(health.ok ? "ok" : "NEEDS ATTENTION")  \(health.line)")
+    exit(health.ok ? 0 : 1)
 
 case "menubar":
     let app = NSApplication.shared

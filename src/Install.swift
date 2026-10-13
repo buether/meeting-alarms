@@ -201,6 +201,7 @@ func installAgents() -> Int32 {
         }
     }
     _ = launchctl(["kickstart", "-k", "\(domain)/\(Agents.pollerLabel)"])
+    _ = launchctl(["kickstart", "-k", "\(domain)/\(Agents.menuBarLabel)"])
 
     let minutes = max(1, Int((cfg.pollSeconds / 60).rounded()))
     print("Loaded \(Agents.pollerLabel) (every \(minutes == 1 ? "minute" : "\(minutes) minutes")) "
@@ -208,6 +209,37 @@ func installAgents() -> Int32 {
     print("Running: \(executable.path)")
     print("If a Calendar access prompt for 'Meeting Alarm' appears, click Allow.")
     return 0
+}
+
+/// Rewrites and reloads only the poller, for a changed poll_seconds. The menu
+/// bar agent is left alone, since the settings window usually lives in it.
+func reloadPollerAgent() {
+    guard let executable = Paths.executableURL.map(stablePath) else { return }
+    let cfg = Config.load()
+    guard let (label, plist) = Agents.definitions(executable: executable, cfg: cfg)
+            .first(where: { $0.label == Agents.pollerLabel }),
+          let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+    else { return }
+    let path = Agents.plistPath(label)
+    guard (try? data.write(to: path)) != nil else { return }
+    let domain = "gui/\(getuid())"
+    _ = launchctl(["bootout", "\(domain)/\(label)"])
+    _ = launchctl(["bootstrap", domain, path.path])
+}
+
+/// Starts the menu bar agent if it is loaded but not running. RunAtLoad and
+/// KeepAlive are launches launchd makes on its own, and a login session stuck
+/// in on-demand-only mode never makes them, so the menu bar would never appear.
+/// The poller still runs every minute in that mode (it is calendar-scheduled),
+/// so it asks for the menu bar explicitly, which that mode does allow.
+func reviveMenuBar() {
+    let printed = launchctl(["print", "gui/\(getuid())/\(Agents.menuBarLabel)"])
+    guard printed.code == 0,
+          printed.out.split(separator: "\n").contains(where: {
+              $0.trimmingCharacters(in: .whitespaces) == "state = not running" })
+    else { return }
+    _ = launchctl(["kickstart", "gui/\(getuid())/\(Agents.menuBarLabel)"])
+    log("menu bar was not running; started it")
 }
 
 func uninstallAgents() -> Int32 {

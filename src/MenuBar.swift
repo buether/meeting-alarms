@@ -4,7 +4,7 @@ final class MeetingAlarmMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var statusItem: NSStatusItem?
     private let healthItem = NSMenuItem(title: "Checking calendar…", action: nil, keyEquivalent: "")
     private var timer: Timer?
-    private let settings = MeetingLinkSettingsWindow()
+    private let settings = SettingsWindow()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -36,12 +36,7 @@ final class MeetingAlarmMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate
     @objc private func didWake(_ notification: Notification) { refreshStatus() }
 
     @objc private func refreshStatus() {
-        let state = State.load()
-        let loaded = launchctl(["print", "gui/\(getuid())/\(Paths.label)"]).code == 0
-        let health = pollerHealth(loaded: loaded, lastOk: state.lastOk,
-                                  failingSince: state.failingSince, lastError: state.lastError,
-                                  now: Date().timeIntervalSince1970,
-                                  pollSeconds: Config.load().pollSeconds)
+        let health = menuBarHealth()
         let title = health.ok ? "Meeting Alarm is running" : "Meeting Alarm needs attention"
         let image = NSImage(systemSymbolName: health.ok ? "bell.fill" : "bell.badge.fill",
                             accessibilityDescription: title)
@@ -60,4 +55,21 @@ final class MeetingAlarmMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
     }
+}
+
+/// What the menu bar shows: the poller's health, or else the first account
+/// problem. `meeting-alarm menubar --check` prints it.
+func menuBarHealth() -> (ok: Bool, line: String) {
+    let state = State.load()
+    let cfg = Config.load()
+    let now = Date().timeIntervalSince1970
+    let loaded = launchctl(["print", "gui/\(getuid())/\(Paths.label)"]).code == 0
+    let poller = pollerHealth(loaded: loaded, lastOk: state.lastOk,
+                              failingSince: state.failingSince, lastError: state.lastError,
+                              now: now, pollSeconds: cfg.pollSeconds)
+    // The poller keeps state.accounts current; a gone account needs attention
+    // just as a stalled poller does.
+    let accountIssues = accountProblems(state.accounts, now: now, expectedSource: cfg.expectedSource)
+    if !poller.ok || accountIssues.isEmpty { return poller }
+    return (false, accountIssues[0].line)
 }

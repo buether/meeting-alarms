@@ -9,8 +9,10 @@ of something, and is gone by the time you surface.
 - Wakes the display, raises the volume, speaks, and loops a sound.
 - The alarm window sits above every Space and full-screen app.
 - **Join** opens the Zoom, Teams, Meet or Webex link from the invitation.
-  Your Mac's default app handles links unless you choose an override in
-  **Meeting Link Settings**, available from the alarm's corner gear.
+  Your Mac's default app handles links unless you choose another in
+  **Settings**.
+- Warns in the menu bar when a calendar account disappears, since a signed-out
+  account stops getting invites without any error.
 - Reads Calendar.app, so every account your Mac already syncs is covered.
 - Silent for all-day events and invitations you declined.
 - Nothing to sign in to, no API keys, nothing leaves the Mac.
@@ -122,8 +124,9 @@ when only the case is off. The last line counts the problems.
 meeting-alarm status                check your setup: poller health, watched calendars, a verdict per event
 meeting-alarm poll --dry-run        what this minute's poll would do, without ringing anything
 meeting-alarm test                  ring a test alarm
-meeting-alarm calendars             calendar titles and account names EventKit can see
-meeting-alarm settings              choose apps for meeting links
+meeting-alarm calendars             which calendars are watched
+meeting-alarm accounts [--forget]   calendar accounts and their health; --forget drops ones removed on purpose
+meeting-alarm settings              every setting, in a window (also in the menu bar)
 meeting-alarm install               write and load the three LaunchAgents for wherever this binary lives
 meeting-alarm uninstall             unload and remove them; logs and history stay
 meeting-alarm help                  most of this README, in the terminal
@@ -137,18 +140,44 @@ meeting-alarm help                  most of this README, in the terminal
 
 Installing starts a small bell in the menu bar and brings it back at login.
 A plain bell means the poller is loaded and calendar checks are recent. A badged
-bell means checks have failed, stalled, or the poller is not loaded. Hover for
-the current status, or click it to refresh status and open Settings. It checks
-the same health information as `meeting-alarm status`, updating every 30 seconds
-and when the Mac wakes. The icon does not read calendars or play an alarm.
+bell means checks have failed or stalled, the poller is not loaded, or a
+calendar account has gone. Hover for the reason, or click it to refresh and open
+Settings. It reports the same things as `meeting-alarm status`, updating every
+30 seconds and when the Mac wakes. The icon does not read calendars or play an
+alarm. If it is ever not running, the poller starts it again within a minute.
 
 Existing installs need `meeting-alarm install` once to add the menu bar job.
 `meeting-alarm uninstall` removes it with the other background jobs.
 
+## Accounts
+
+A calendar account can stop delivering invites without any error: one removed or
+switched off for Calendars under System Settings > Internet Accounts just
+vanishes, and one whose sign-in expired keeps showing its old events while new
+invites stop arriving. The poller remembers every account it has seen:
+
+- An account missing for more than ten minutes is **ACCOUNT GONE** in `status`,
+  in Settings, and as a badge on the menu bar bell. Sign in again with
+  Calendars on. If you removed it on purpose, `meeting-alarm accounts --forget`
+  or **Forget gone accounts** in Settings.
+- Each account's newest change is shown, so a stale one is visible. After 14
+  days without a change it reads **QUIET**: not counted as a problem, because a
+  quiet personal calendar is normal, but if you have had invites since then,
+  that account is probably signed out.
+
+macOS does not let other apps see an expired sign-in directly, so the newest
+change is the only evidence there is.
+
 ## Settings
 
-Click the gear in the alarm's bottom-right corner, or run `meeting-alarm settings`,
-to choose an app for Google Meet, Zoom, Teams, Webex or other links. Each starts
+Click the menu bar bell and choose **Settings…**, click the gear in the alarm's
+corner, or run `meeting-alarm settings`. Every setting in the table below is
+there, labelled with its config key, and saved the moment you change it. Calendars
+are a list of tick boxes, and unticking the last one is refused rather than
+silently meaning "all".
+
+Under **Meeting links** you can choose an app for Google Meet, Zoom, Teams, Webex
+or other links. Each starts
 with **macOS default**. **Choose app…** lets you pick a browser, meeting app or
 saved web app from your Mac, including apps in `~/Applications/Chrome Apps.localized`.
 Choices save immediately and apply to the next Join click, including the current
@@ -189,7 +218,7 @@ while working on the code and is not committed.
 | `max_alarm_seconds` | `900` | Seconds after the start to give up. `0` rings until dismissed. |
 | `include_calendars` | `[]` | Calendar titles to watch, e.g. `["Work"]`. Empty watches all of them. Exact and case-sensitive; `status` shows which calendars are watched and flags a name that matches none. |
 | `fallback_sound` | Sosumi | Used when `sound` is not on disk. With neither, the alarm still speaks and shows the window. |
-| `expected_source` | `null` | Account name that must still be present, so a signed-out account is reported rather than looking like an empty calendar. |
+| `expected_source` | `null` | An account to report as missing even if this Mac never saw it. Accounts that were seen are tracked anyway; see Accounts below. |
 | `meeting_apps` | `{}` | Optional app paths keyed by `google_meet`, `zoom`, `teams`, `webex` or `other`. For example, `{"google_meet": "/Users/you/Applications/Google Meet.app"}`. The settings window writes these and preserves other config keys. |
 | `meeting_app_profiles` | `{}` | Optional full Chrome Profile Paths keyed by the same service names as `meeting_apps`. Used only for explicitly selected Chrome web apps. Find a path in `chrome://version`, for example `/Users/you/Library/Application Support/Google/Chrome/Profile 2`. |
 | `poll_seconds` | `60` | Seconds between calendar checks. Rounds to whole minutes. |

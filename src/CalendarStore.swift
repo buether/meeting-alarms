@@ -140,13 +140,41 @@ enum CalendarStore {
         }
     }
 
-    static func checkCalendars(cfg: Config) throws {
-        guard let expected = cfg.expectedSource else { return }
-        let found = try calendars()
-        if !found.contains(where: { $0.source == expected }) {
-            throw CalendarError(
-                "no calendar from source \"\(expected)\"; is the account still signed in?")
+    /// Every account with a calendar that can ring, as EventKit sees it now.
+    static func liveAccounts() throws -> [LiveAccount] {
+        try requireAccess()
+        let calendars = store.calendars(for: .event).filter {
+            $0.type != .birthday && $0.type != .subscription
         }
+        var byID: [String: LiveAccount] = [:]
+        for calendar in calendars {
+            guard let source = calendar.source else { continue }
+            byID[source.sourceIdentifier, default: LiveAccount(
+                id: source.sourceIdentifier, title: source.title, calendars: [],
+                local: source.sourceType == .local)].calendars.append(calendar.title)
+        }
+        return byID.values.map { var a = $0; a.calendars.sort(); return a }
+    }
+
+    /// The newest lastModifiedDate per account, over events from 30 days back to
+    /// 60 ahead. A signed-out account keeps its cached events but stops getting
+    /// changes, so this is the only trace one leaves.
+    static func accountActivity(now: Date) throws -> [String: Double] {
+        try requireAccess()
+        let calendars = store.calendars(for: .event).filter {
+            $0.type != .birthday && $0.type != .subscription
+        }
+        var newest: [String: Double] = [:]
+        for (sourceID, group) in Dictionary(grouping: calendars, by: { $0.source?.sourceIdentifier ?? "" })
+        where !sourceID.isEmpty {
+            let predicate = store.predicateForEvents(
+                withStart: now.addingTimeInterval(-30 * 86400),
+                end: now.addingTimeInterval(60 * 86400), calendars: group)
+            if let date = store.events(matching: predicate).compactMap(\.lastModifiedDate).max() {
+                newest[sourceID] = date.timeIntervalSince1970
+            }
+        }
+        return newest
     }
 }
 
