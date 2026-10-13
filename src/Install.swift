@@ -17,7 +17,7 @@ func shellQuoted(_ value: String) -> String {
     "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
 
-/// The script both agents run. It hands off to the binary, or takes the agents
+/// The script all agents run. It hands off to the binary, or takes the agents
 /// down when the binary is gone.
 ///
 /// `brew uninstall` deletes the Cellar and has no hook to run anything on the
@@ -45,13 +45,16 @@ func agentRunnerScript(executable: String, label: String) -> String {
     AGENTS="$HOME/Library/LaunchAgents"
     # Remove the files before booting out, because booting out this job kills
     # this script mid-run.
-    rm -f "$AGENTS/$LABEL.plist" "$AGENTS/$LABEL.watchdog.plist" "$0"
+    rm -f "$AGENTS/$LABEL.plist" "$AGENTS/$LABEL.watchdog.plist" "$AGENTS/$LABEL.menubar.plist" "$0"
     # Booting out our own job kills this script, so that one goes last.
     case "$1" in
-      watchdog) SELF="$LABEL.watchdog"; OTHER="$LABEL" ;;
-      *)        SELF="$LABEL";          OTHER="$LABEL.watchdog" ;;
+      watchdog) SELF="$LABEL.watchdog" ;;
+      menubar)  SELF="$LABEL.menubar" ;;
+      *)        SELF="$LABEL" ;;
     esac
-    launchctl bootout "gui/$(id -u)/$OTHER" 2>/dev/null
+    for OTHER in "$LABEL" "$LABEL.watchdog" "$LABEL.menubar"; do
+      [ "$OTHER" = "$SELF" ] || launchctl bootout "gui/$(id -u)/$OTHER" 2>/dev/null
+    done
     launchctl bootout "gui/$(id -u)/$SELF" 2>/dev/null
     exit 0
 
@@ -76,6 +79,7 @@ func pollSchedule(pollSeconds: Double) -> Any {
 enum Agents {
     static var pollerLabel: String { Paths.label }
     static var watchdogLabel: String { "\(Paths.label).watchdog" }
+    static var menuBarLabel: String { "\(Paths.label).menubar" }
 
     static var directory: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -103,7 +107,7 @@ enum Agents {
         return true
     }
 
-    /// Both agents run `run-agent.sh`, which execs the bundle executable. The
+    /// All agents run `run-agent.sh`, which execs the bundle executable. The
     /// exec keeps the job process on the signed bundle, and the script is what
     /// remains to clean up if the binary is ever removed.
     static func definitions(executable: URL, cfg: Config) -> [(label: String, plist: [String: Any])] {
@@ -131,12 +135,23 @@ enum Agents {
             "StandardOutPath": log,
             "StandardErrorPath": log,
         ]
+        var menuBar: [String: Any] = [
+            "Label": menuBarLabel,
+            "ProgramArguments": [runnerPath.path, "menubar"],
+            "RunAtLoad": true,
+            "KeepAlive": true,
+            "ProcessType": "Interactive",
+            "LimitLoadToSessionType": "Aqua",
+            "StandardOutPath": log,
+            "StandardErrorPath": log,
+        ]
         if Paths.label != "com.buether.meeting-alarm" {
             // A relabelled install has to tell its own agents which label they
             // answer to, or `status` and `test` look at the wrong job.
             poller["EnvironmentVariables"] = ["MEETING_ALARM_LABEL": Paths.label]
+            menuBar["EnvironmentVariables"] = ["MEETING_ALARM_LABEL": Paths.label]
         }
-        return [(pollerLabel, poller), (watchdogLabel, watchdog)]
+        return [(pollerLabel, poller), (watchdogLabel, watchdog), (menuBarLabel, menuBar)]
     }
 }
 
@@ -189,7 +204,7 @@ func installAgents() -> Int32 {
 
     let minutes = max(1, Int((cfg.pollSeconds / 60).rounded()))
     print("Loaded \(Agents.pollerLabel) (every \(minutes == 1 ? "minute" : "\(minutes) minutes")) "
-        + "and \(Agents.watchdogLabel) (10:05, 14:05).")
+        + "and \(Agents.watchdogLabel) (10:05, 14:05), plus the menu bar indicator.")
     print("Running: \(executable.path)")
     print("If a Calendar access prompt for 'Meeting Alarm' appears, click Allow.")
     return 0
@@ -197,12 +212,12 @@ func installAgents() -> Int32 {
 
 func uninstallAgents() -> Int32 {
     let domain = "gui/\(getuid())"
-    for label in [Agents.pollerLabel, Agents.watchdogLabel] {
+    for label in [Agents.pollerLabel, Agents.watchdogLabel, Agents.menuBarLabel] {
         _ = launchctl(["bootout", "\(domain)/\(label)"])
         try? FileManager.default.removeItem(at: Agents.plistPath(label))
     }
     try? FileManager.default.removeItem(at: Agents.runnerPath)
-    print("Unloaded and removed both LaunchAgents.")
+    print("Unloaded and removed all three LaunchAgents.")
     print("Left in place: \(Paths.stateDir.path) and \(Paths.logDir.path)")
     print("To forget the Calendar grant: tccutil reset Calendar \(Paths.label)")
     return 0

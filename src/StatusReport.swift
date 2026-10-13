@@ -1,6 +1,6 @@
 import Foundation
 
-// `status` is the one place a user checks that their setup does what they
+// `status` is where a user checks that their setup does what they
 // think. Nothing here pops up or waits to be noticed: every problem has to be
 // readable from the listing itself, including silence that comes from the
 // config rather than from the calendar.

@@ -140,6 +140,8 @@ struct Config {
             "fallback_sound": fallbackSound,
             "include_calendars": includeCalendars,
             "expected_source": expectedSource ?? NSNull(),
+            "meeting_apps": [String: String](),
+            "meeting_app_profiles": [String: String](),
         ]
         return try? JSONSerialization.data(
             withJSONObject: raw, options: [.prettyPrinted, .sortedKeys])

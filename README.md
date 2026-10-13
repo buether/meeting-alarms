@@ -9,6 +9,8 @@ of something, and is gone by the time you surface.
 - Wakes the display, raises the volume, speaks, and loops a sound.
 - The alarm window sits above every Space and full-screen app.
 - **Join** opens the Zoom, Teams, Meet or Webex link from the invitation.
+  Your Mac's default app handles links unless you choose an override in
+  **Meeting Link Settings**, available from the alarm's corner gear.
 - Reads Calendar.app, so every account your Mac already syncs is covered.
 - Silent for all-day events and invitations you declined.
 - Nothing to sign in to, no API keys, nothing leaves the Mac.
@@ -121,7 +123,8 @@ meeting-alarm status                check your setup: poller health, watched cal
 meeting-alarm poll --dry-run        what this minute's poll would do, without ringing anything
 meeting-alarm test                  ring a test alarm
 meeting-alarm calendars             calendar titles and account names EventKit can see
-meeting-alarm install               write and load the two LaunchAgents for wherever this binary lives
+meeting-alarm settings              choose apps for meeting links
+meeting-alarm install               write and load the three LaunchAgents for wherever this binary lives
 meeting-alarm uninstall             unload and remove them; logs and history stay
 meeting-alarm help                  most of this README, in the terminal
 ./install.sh                        in a checkout: rebuild, then install
@@ -130,7 +133,39 @@ meeting-alarm help                  most of this README, in the terminal
 
 `poll.log`, `alarm.log` and `launchd.log` are in `~/Library/Logs/meeting-alarm/`.
 
+## Menu bar
+
+Installing starts a small bell in the menu bar and brings it back at login.
+A plain bell means the poller is loaded and calendar checks are recent. A badged
+bell means checks have failed, stalled, or the poller is not loaded. Hover for
+the current status, or click it to refresh status and open Settings. It checks
+the same health information as `meeting-alarm status`, updating every 30 seconds
+and when the Mac wakes. The icon does not read calendars or play an alarm.
+
+Existing installs need `meeting-alarm install` once to add the menu bar job.
+`meeting-alarm uninstall` removes it with the other background jobs.
+
 ## Settings
+
+Click the gear in the alarm's bottom-right corner, or run `meeting-alarm settings`,
+to choose an app for Google Meet, Zoom, Teams, Webex or other links. Each starts
+with **macOS default**. **Choose app…** lets you pick a browser, meeting app or
+saved web app from your Mac, including apps in `~/Applications/Chrome Apps.localized`.
+Choices save immediately and apply to the next Join click, including the current
+alarm. If a chosen app is removed or fails to launch, the original URL goes to
+your Mac's default handler. Selecting **macOS default** removes that override.
+
+For a Chrome web app, **Choose profile…** pins Join to a Chrome profile. Switch
+to the desired profile in Chrome, open `chrome://version`, then copy **Profile
+Path** into the settings dialog. The web app must be installed in that profile;
+sign in to your meeting account there. A Chrome profile can contain several
+Google accounts, so check the account shown in Meet before joining.
+
+**Chrome chooses profile** uses the profile recorded in the app bundle, or lets
+Chrome choose when the app is shared. Changing the chosen app clears its pinned
+profile. If a pinned profile folder is unavailable, the original URL goes to the
+Mac's default handler. Meeting Alarm does not read Chrome's private profile
+preferences.
 
 `meeting-alarm install` writes a config file on first run at
 `~/Library/Application Support/meeting-alarm/config.json`, outside the install
@@ -155,6 +190,8 @@ while working on the code and is not committed.
 | `include_calendars` | `[]` | Calendar titles to watch, e.g. `["Work"]`. Empty watches all of them. Exact and case-sensitive; `status` shows which calendars are watched and flags a name that matches none. |
 | `fallback_sound` | Sosumi | Used when `sound` is not on disk. With neither, the alarm still speaks and shows the window. |
 | `expected_source` | `null` | Account name that must still be present, so a signed-out account is reported rather than looking like an empty calendar. |
+| `meeting_apps` | `{}` | Optional app paths keyed by `google_meet`, `zoom`, `teams`, `webex` or `other`. For example, `{"google_meet": "/Users/you/Applications/Google Meet.app"}`. The settings window writes these and preserves other config keys. |
+| `meeting_app_profiles` | `{}` | Optional full Chrome Profile Paths keyed by the same service names as `meeting_apps`. Used only for explicitly selected Chrome web apps. Find a path in `chrome://version`, for example `/Users/you/Library/Application Support/Google/Chrome/Profile 2`. |
 | `poll_seconds` | `60` | Seconds between calendar checks. Rounds to whole minutes. |
 
 To fill in `include_calendars` or `expected_source`, list what EventKit sees:
@@ -235,11 +272,11 @@ Two meetings a minute apart put two alarm windows on screen. Only the one
 holding `alarm.lock` raises the volume and loops the sound, so they do not
 fight over the output device.
 
-Both agents run `run-agent.sh`, written into
+All three agents run `run-agent.sh`, written into
 `~/Library/Application Support/meeting-alarm/` at install time. It hands off to
 the binary with `exec`, so launchd's job process ends up being the signed
 bundle. If the binary is ever gone — an uninstall, a deleted checkout — the
-script instead unloads both agents, deletes both plists and deletes itself,
+script instead unloads all three agents, deletes their plists and deletes itself,
 rather than leaving launchd firing every minute at a path that no longer
 exists. Your config, alarm history and logs are left alone.
 

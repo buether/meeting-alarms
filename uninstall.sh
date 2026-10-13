@@ -10,12 +10,12 @@ if [ -x "$BIN" ]; then
 else
   # The build is already gone, so unload by label instead.
   LABEL="${MEETING_ALARM_LABEL:-com.buether.meeting-alarm}"
-  for label in "$LABEL" "$LABEL.watchdog"; do
+  for label in "$LABEL" "$LABEL.watchdog" "$LABEL.menubar"; do
     launchctl bootout "gui/$(id -u)/$label" 2>/dev/null
     rm -f "$HOME/Library/LaunchAgents/$label.plist"
   done
   rm -f "$HOME/Library/Application Support/meeting-alarm/run-agent.sh"
-  echo "Unloaded and removed both LaunchAgents."
+  echo "Unloaded and removed all three LaunchAgents."
 fi
 
 rm -rf "$REPO/build"
