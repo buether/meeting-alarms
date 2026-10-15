@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import UniformTypeIdentifiers
 
 /// Every setting in config.json, editable, one window. Each change is written
@@ -275,9 +276,34 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     }
 
     private func linkSection() -> NSView {
-        let rows = links.rows().map { item in
+        var rows = links.rows().map { item in
             row(item.label, key: item.label.isEmpty ? nil : "meeting_apps", help: nil, item.control,
                 hidden: !item.visible)
+        }
+        let preferences = MeetingLinkPreferences.load()
+        if let path = preferences.applications[MeetingService.googleMeet.rawValue],
+           isSafariWebApp(at: URL(fileURLWithPath: path)) {
+            rows.append(row("Reuse Meet window", key: "reuse_safari_meet_window",
+                help: "Focus the same meeting, or enter its code in an empty Meet home window. "
+                    + "Other meetings stay open. Requires Accessibility access; otherwise opens normally.",
+                checkbox("Reuse Safari Meet windows", on: preferences.reuseSafariMeetWindow) { [weak self] in
+                    self?.save("reuse_safari_meet_window", $0)
+                }))
+            if preferences.reuseSafariMeetWindow {
+                let granted = AXIsProcessTrusted()
+                rows.append(row("Window access", key: nil,
+                    help: granted ? "Accessibility access is granted." :
+                        "Enable Meeting Alarm in Privacy & Security > Accessibility, then reopen Settings.",
+                    button(granted ? "Open Accessibility settings…" : "Set up Accessibility access…") {
+                        if !AXIsProcessTrusted() {
+                            _ = AXIsProcessTrustedWithOptions(
+                                [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+                        }
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }))
+            }
         }
         return section("Meeting links", rows: rows,
                        note: "Which app the Join button opens, per kind of link (meeting_apps, and "

@@ -184,6 +184,17 @@ Choices save immediately and apply to the next Join click, including the current
 alarm. If a chosen app is removed or fails to launch, the original URL goes to
 your Mac's default handler. Selecting **macOS default** removes that override.
 
+For a Safari Google Meet web app, turn on **Reuse Safari Meet windows** and use
+**Set up Accessibility access…** to enable Meeting Alarm under System Settings >
+Privacy & Security > Accessibility. Join focuses a window already on that meeting,
+or enters the code in an empty Meet home window using its signed-in session.
+It does not replace another meeting or text you are entering. Without access or
+a suitable window, Join opens the link normally. This works with English Meet
+home controls and plain `https://meet.google.com/abc-defg-hij` links. Links with
+query parameters or fragments use the normal handoff so those values are kept.
+Window reuse is off by default and applies only to an explicitly selected Safari
+web app for Google Meet.
+
 For a Chrome web app, **Choose profile…** pins Join to a Chrome profile. Switch
 to the desired profile in Chrome, open `chrome://version`, then copy **Profile
 Path** into the settings dialog. The web app must be installed in that profile;
@@ -221,6 +232,7 @@ while working on the code and is not committed.
 | `expected_source` | `null` | An account to report as missing even if this Mac never saw it. Accounts that were seen are tracked anyway; see Accounts below. |
 | `meeting_apps` | `{}` | Optional app paths keyed by `google_meet`, `zoom`, `teams`, `webex` or `other`. For example, `{"google_meet": "/Users/you/Applications/Google Meet.app"}`. The settings window writes these and preserves other config keys. |
 | `meeting_app_profiles` | `{}` | Optional full Chrome Profile Paths keyed by the same service names as `meeting_apps`. Used only for explicitly selected Chrome web apps. Find a path in `chrome://version`, for example `/Users/you/Library/Application Support/Google/Chrome/Profile 2`. |
+| `reuse_safari_meet_window` | `false` | Reuse a chosen Safari Meet app's empty home window, or focus the same meeting. Requires Accessibility access. Other meetings and unsupported links open normally. |
 | `poll_seconds` | `60` | Seconds between calendar checks. Rounds to whole minutes. |
 
 To fill in `include_calendars` or `expected_source`, list what EventKit sees:
