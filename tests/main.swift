@@ -543,7 +543,6 @@ var missingID = chromeInfo
 missingID.removeValue(forKey: "CrAppModeShortcutID")
 check(chromeWebAppConfiguration(info: missingID, meetingURL: meetLink) == nil,
       "incomplete Chrome web-app metadata falls back rather than launching an empty app")
-try! FileManager.default.removeItem(at: appFixtures)
 
 var alarmExits: [Int32] = []
 var alarmOutcomes: [String] = []
@@ -649,7 +648,88 @@ equal(includeAfterWatchAll(false, allTitles: ["Work", "Family", "Work"]), ["Fami
 equal(pollIntervalChoices(current: 60), [1, 2, 5, 10, 15], "the usual intervals are offered")
 equal(pollIntervalChoices(current: 420), [1, 2, 5, 7, 10, 15], "a custom interval stays selectable")
 
+// MARK: - Safari Meet window reuse
+
+let plainMeetLink = URL(string: "https://meet.google.com/abc-defg-hij")!
+let meetHome = SafariMeetWindowState(url: URL(string: "https://meet.google.com/home"), hasEmptyJoinField: true)
+let anotherCall = SafariMeetWindowState(url: URL(string: "https://meet.google.com/xyz-abcd-efg"))
+let sameCall = SafariMeetWindowState(url: plainMeetLink)
+equal(safariMeetWindowAction(for: plainMeetLink, windows: [meetHome]), .enterCode(0, "abc-defg-hij"),
+      "Join uses the existing home window's signed-in session")
+equal(safariMeetWindowAction(for: plainMeetLink, windows: [meetHome, sameCall]), .focus(1),
+      "an already open meeting wins over an idle home window")
+equal(safariMeetWindowAction(for: plainMeetLink, windows: [anotherCall, meetHome]), .enterCode(1, "abc-defg-hij"),
+      "an idle window can be used without replacing another call")
+equal(safariMeetWindowAction(for: plainMeetLink, windows: [anotherCall]), .openNormally,
+      "a window on a different meeting is never navigated")
+equal(safariMeetWindowAction(for: plainMeetLink, windows: []), .openNormally,
+      "no running window uses the normal app handoff")
+equal(safariMeetWindowAction(for: plainMeetLink, windows: [SafariMeetWindowState(url: meetHome.url)]), .openNormally,
+      "a home page with user input or missing controls is not reused")
+for path in ["/", "/landing"] {
+    equal(safariMeetWindowAction(for: plainMeetLink, windows: [SafariMeetWindowState(
+        url: URL(string: "https://meet.google.com\(path)"), hasEmptyJoinField: true)]), .enterCode(0, "abc-defg-hij"),
+          "a Meet landing page can receive a code: \(path)")
+}
+for page in ["https://meet.google.com/calling", "https://accounts.google.com/", "https://meet.google.com.example.org/home",
+             "http://meet.google.com/home", "https://meet.google.com:8443/home"] {
+    equal(safariMeetWindowAction(for: plainMeetLink, windows: [SafariMeetWindowState(
+        url: URL(string: page), hasEmptyJoinField: true)]), .openNormally,
+          "unknown or non-Meet pages cannot be navigated: \(page)")
+}
+for link in [meetLink.absoluteString, "https://meet.google.com/abc-defg-hij?authuser=work@example.com",
+             "https://meet.google.com/abc-defg-hij#join", "https://meet.google.com/lookup/nickname",
+             "https://meet.google.com/abc-defg-hij/extra", "https://meet.google.com.example.org/abc-defg-hij",
+             "https://meet.google.com:8443/abc-defg-hij", "https://user@meet.google.com/abc-defg-hij"] {
+    equal(safariMeetWindowAction(for: URL(string: link)!, windows: [meetHome, sameCall]), .openNormally,
+          "links that code entry cannot preserve retain their original URL: \(link)")
+}
+check(!MeetingLinkPreferences.load(at: settingsPath).reuseSafariMeetWindow, "window reuse is opt-in")
+try! ConfigFile.set("reuse_safari_meet_window", true, at: settingsPath)
+check(MeetingLinkPreferences.load(at: settingsPath).reuseSafariMeetWindow, "window reuse survives saving and reloading")
+try! MeetingLinkPreferences.setApplication(safariApp, for: .googleMeet, at: settingsPath)
+check(MeetingLinkPreferences.load(at: settingsPath).reuseSafariMeetWindow, "changing apps preserves the reuse choice")
+let reuseJSON = try! JSONSerialization.jsonObject(with: Data(contentsOf: settingsPath)) as! [String: Any]
+equal(reuseJSON["volume"] as? Int, 42, "saving reuse and app choices keeps the alarm settings")
+
+var reusePreferences = MeetingLinkPreferences(applications: ["google_meet": safariApp.path], reuseSafariMeetWindow: true)
+var reuseAttempt: ((Bool) -> Void)?
+var reusedLinks: [URL] = []
+var normalHandoffs: [URL] = []
+var reuseCompletions = 0
+var reuseOpener = MeetingLinkOpener(preferences: reusePreferences,
+    openDefault: { _ in failures.append("a reusable or launchable app must not open the default") },
+    openInApplication: { url, _, _, done in normalHandoffs.append(url); done(true) },
+    reuseSafariWindow: { url, app, done in
+        equal(app.path, safariApp.path, "reuse targets the explicitly selected Safari web app")
+        reusedLinks.append(url)
+        reuseAttempt = done
+    })
+reuseOpener.open(plainMeetLink) { reuseCompletions += 1 }
+check(normalHandoffs.isEmpty && reuseCompletions == 0, "Join waits for reuse before opening another window")
+reuseAttempt?(true)
+check(normalHandoffs.isEmpty && reuseCompletions == 1, "successful reuse completes without a second handoff")
+reuseOpener.open(meetLink) { reuseCompletions += 1 }
+reuseAttempt?(false)
+equal(normalHandoffs, [meetLink], "unavailable access or unsuitable windows fall back with the complete original URL")
+equal(reuseCompletions, 2, "failed reuse completes once after the normal handoff")
+reuseOpener.preferences.reuseSafariMeetWindow = false
+reuseOpener.open(plainMeetLink) {}
+equal(reusedLinks.count, 2, "turning reuse off skips all window inspection")
+reuseOpener.preferences = MeetingLinkPreferences(reuseSafariMeetWindow: true)
+reuseOpener.openDefault = { _ in }
+reuseOpener.open(plainMeetLink) {}
+equal(reusedLinks.count, 2, "reuse never overrides macOS default routing")
+reuseOpener.preferences = MeetingLinkPreferences(applications: ["google_meet": chromeApp.path], reuseSafariMeetWindow: true)
+reuseOpener.open(plainMeetLink) {}
+equal(reusedLinks.count, 2, "a Chrome selection keeps its profile-aware launcher")
+reuseOpener.preferences = MeetingLinkPreferences(applications: ["zoom": safariApp.path], reuseSafariMeetWindow: true)
+reuseOpener.open(zoomLink) {}
+equal(reusedLinks.count, 2, "reuse applies only to Google Meet")
+
 // MARK: - Report
+
+try! FileManager.default.removeItem(at: appFixtures)
 
 if failures.isEmpty {
     print("ok - \(checks) checks passed")

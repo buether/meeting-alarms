@@ -104,6 +104,9 @@ func helpText() -> String {
       meeting_apps        {}
                           optional app paths per meeting service, and
                           meeting_app_profiles for Chrome web apps
+      reuse_safari_meet_window  false
+                          reuse a Safari Meet home window or focus the same
+                          meeting; enable Accessibility access in Settings
       poll_seconds        \(Int(d.pollSeconds))
                           seconds between calendar checks, in whole minutes
 
