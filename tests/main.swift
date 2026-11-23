@@ -169,6 +169,19 @@ check(volumeRestore(saved: wasMuted, current: VolumeSetting(level: 75, muted: tr
 check(volumeRestore(saved: wasMuted, current: nil, alarmLevel: 75) == nil,
       "a device with no software volume is left alone")
 
+check(shouldRaiseVolume(output: wasLoud, adjustVolume: true, breakMute: true),
+      "the alarm raises an unmuted output")
+check(shouldRaiseVolume(output: wasMuted, adjustVolume: true, breakMute: true),
+      "break_mute rings through a mute")
+check(!shouldRaiseVolume(output: wasMuted, adjustVolume: true, breakMute: false),
+      "break_mute off leaves a muted output alone")
+check(!shouldRaiseVolume(output: wasLoud, adjustVolume: false, breakMute: true),
+      "adjust_volume off leaves an unmuted output alone")
+check(!shouldRaiseVolume(output: wasMuted, adjustVolume: false, breakMute: true),
+      "adjust_volume off leaves a muted output alone, whatever break_mute says")
+check(!shouldRaiseVolume(output: nil, adjustVolume: true, breakMute: true),
+      "a device with no software volume is not raised")
+
 // MARK: - Agent paths
 // A Cellar path carries the version, which brew upgrade changes out from under
 // a LaunchAgent; opt is the stable symlink to whatever version is current.

@@ -86,6 +86,7 @@ struct Config {
     var maxAlarmSeconds: Double = 900
     var message = "Meeting starting"
     var volume = 75
+    var adjustVolume = true
     var speak = true
     var breakMute = true
     var sound = "/System/Library/PrivateFrameworks/ToneLibrary.framework/Versions/A/Resources/Ringtones/Silk.m4r"
@@ -112,6 +113,7 @@ struct Config {
         cfg.maxAlarmSeconds = double("max_alarm_seconds") ?? cfg.maxAlarmSeconds
         cfg.message = raw["message"] as? String ?? cfg.message
         cfg.volume = (raw["volume"] as? NSNumber)?.intValue ?? cfg.volume
+        cfg.adjustVolume = (raw["adjust_volume"] as? NSNumber)?.boolValue ?? cfg.adjustVolume
         cfg.speak = (raw["speak"] as? NSNumber)?.boolValue ?? cfg.speak
         cfg.breakMute = (raw["break_mute"] as? NSNumber)?.boolValue ?? cfg.breakMute
         cfg.sound = raw["sound"] as? String ?? cfg.sound
@@ -134,6 +136,7 @@ struct Config {
             "max_alarm_seconds": maxAlarmSeconds,
             "message": message,
             "volume": volume,
+            "adjust_volume": adjustVolume,
             "speak": speak,
             "break_mute": breakMute,
             "sound": sound,

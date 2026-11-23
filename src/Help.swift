@@ -84,6 +84,9 @@ func helpText() -> String {
                           used when sound is missing
       volume              \(d.volume)
                           output volume while ringing, 0-100
+      adjust_volume       \(d.adjustVolume)
+                          false leaves your volume and mute untouched; the
+                          sound plays at your current level
       speak               \(d.speak)
                           say the message before the sound starts
       break_mute          \(d.breakMute)
