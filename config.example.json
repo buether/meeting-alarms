@@ -4,6 +4,7 @@
   "max_alarm_seconds": 900,
   "message": "Meeting starting",
   "volume": 75,
+  "adjust_volume": true,
   "speak": true,
   "break_mute": true,
   "sound": "/System/Library/PrivateFrameworks/ToneLibrary.framework/Versions/A/Resources/Ringtones/Silk.m4r",

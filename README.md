@@ -212,6 +212,7 @@ while working on the code and is not committed.
 | `message` | `Meeting starting` | Headline in the window, and the spoken words. |
 | `sound` | Silk | Sound file to loop. Full path; see below. |
 | `volume` | `75` | Output volume while ringing, 0 to 100. Your level and mute state come back afterwards. |
+| `adjust_volume` | `true` | `false` never changes the output volume or mute, so the sound plays at your current level and `volume` and `break_mute` are ignored. |
 | `speak` | `true` | Say `message` out loud before the sound starts. |
 | `break_mute` | `true` | Ring through a muted Mac, then put the mute back. `false` respects the mute and leaves the output alone, so the alarm is silent but the window still appears. |
 | `lead_seconds` | `15` | Seconds before the start that it rings. |

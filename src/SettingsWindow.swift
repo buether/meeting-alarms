@@ -149,7 +149,10 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         slider.widthAnchor.constraint(equalToConstant: 220).isActive = true
         let value = label("\(cfg.volume)%", size: 13, color: .labelColor)
         bind(slider) { [weak self] _ in self?.save("volume", Int(slider.doubleValue.rounded())) }
+        slider.isEnabled = cfg.adjustVolume
         let volume = hstack([slider, value])
+        let breakMute = checkbox("Unmute to ring", on: cfg.breakMute) { [weak self] in self?.save("break_mute", $0) }
+        (breakMute as? NSButton)?.isEnabled = cfg.adjustVolume
 
         var rows = [
             row("Sound", key: "sound", help: "Looped until the alarm is dismissed.",
@@ -157,11 +160,16 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             row("Fallback sound", key: "fallback_sound",
                 help: "Used when the sound file is missing. With neither, the alarm still speaks and shows its window.",
                 soundPicker(current: cfg.fallbackSound, key: "fallback_sound")),
+            row("Adjust volume", key: "adjust_volume",
+                help: "Off leaves your volume and mute as they are; the sound plays at your current level.",
+                checkbox("Set the volume while ringing", on: cfg.adjustVolume) { [weak self] in
+                    self?.save("adjust_volume", $0)
+                }),
             row("Volume while ringing", key: "volume",
                 help: "Output volume during the alarm. Yours is put back afterwards.", volume),
             row("Ring through mute", key: "break_mute",
                 help: "Off leaves a muted Mac muted: the window still appears, silently.",
-                checkbox("Unmute to ring", on: cfg.breakMute) { [weak self] in self?.save("break_mute", $0) }),
+                breakMute),
         ]
         if cfg.resolvedSound == nil {
             rows.insert(row("", key: nil, help: nil,

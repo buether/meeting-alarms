@@ -83,6 +83,14 @@ enum Volume {
     }
 }
 
+/// Whether the alarm should set the output level and unmute when it rings.
+/// With `adjust_volume` off the output is never touched; with `break_mute`
+/// off a muted output is left muted.
+func shouldRaiseVolume(output: VolumeSetting?, adjustVolume: Bool, breakMute: Bool) -> Bool {
+    guard adjustVolume, let output else { return false }
+    return !output.muted || breakMute
+}
+
 /// What to put back when the alarm ends, or nil to leave the output alone.
 ///
 /// Someone who reached for the volume key mid-alarm keeps their level; only an

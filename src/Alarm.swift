@@ -49,14 +49,17 @@ final class AlarmRunner: NSObject, NSApplicationDelegate {
 
         if primary {
             let output = Volume.current()
-            if let output, output.muted, !cfg.breakMute {
+            if shouldRaiseVolume(output: output, adjustVolume: cfg.adjustVolume,
+                                 breakMute: cfg.breakMute) {
+                savedVolume = output
+                Volume.set(level: cfg.volume, muted: false)
+            } else if !cfg.adjustVolume {
+                log("adjust_volume is off; leaving the volume alone", name: "alarm")
+            } else if output?.muted == true {
                 // A deliberate mute stands. Raising the level under it would only
                 // be heard later, so the output is left untouched and there is
                 // nothing to put back.
                 log("output is muted and break_mute is off; leaving the volume alone", name: "alarm")
-            } else if output != nil {
-                savedVolume = output
-                Volume.set(level: cfg.volume, muted: false)
             }
             if cfg.speak { speak(cfg.message) }
             if let sound = cfg.resolvedSound {
