@@ -145,6 +145,7 @@ struct Config {
             "expected_source": expectedSource ?? NSNull(),
             "meeting_apps": [String: String](),
             "meeting_app_profiles": [String: String](),
+            "reuse_safari_meet_window": false,
         ]
         return try? JSONSerialization.data(
             withJSONObject: raw, options: [.prettyPrinted, .sortedKeys])

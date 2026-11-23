@@ -56,6 +56,10 @@ func isChromeWebApp(at app: URL) -> Bool {
     chromeWebAppBrowserID(info: appInfo(at: app) ?? [:]) != nil
 }
 
+func isSafariWebApp(at app: URL) -> Bool {
+    (appInfo(at: app)?["CFBundleIdentifier"] as? String)?.hasPrefix("com.apple.Safari.WebApp.") == true
+}
+
 private func openChosenMeetingApp(_ url: URL, in app: URL, profilePath: String?,
                                   completion: @escaping (Bool) -> Void) {
     let info = appInfo(at: app) ?? [:]
@@ -85,6 +89,9 @@ struct MeetingLinkOpener {
     var openInApplication: (URL, URL, String?, @escaping (Bool) -> Void) -> Void = {
         openChosenMeetingApp($0, in: $1, profilePath: $2, completion: $3)
     }
+    var reuseSafariWindow: (URL, URL, @escaping (Bool) -> Void) -> Void = {
+        SafariMeetWindow.reuse($0, in: $1, completion: $2)
+    }
 
     /// Completes after handing off the URL, so the alarm can exit without
     /// losing the default-handler fallback when an asynchronous app launch fails.
@@ -94,9 +101,19 @@ struct MeetingLinkOpener {
             completion()
             return
         }
-        openInApplication(url, app, preferences.chromeProfilePath(for: url)) { opened in
-            if !opened { openDefault(url) }
-            completion()
+        let launch = {
+            openInApplication(url, app, preferences.chromeProfilePath(for: url)) { opened in
+                if !opened { openDefault(url) }
+                completion()
+            }
+        }
+        if preferences.reuseSafariMeetWindow, MeetingService.forURL(url) == .googleMeet,
+           isSafariWebApp(at: app) {
+            reuseSafariWindow(url, app) { reused in
+                if reused { completion() } else { launch() }
+            }
+        } else {
+            launch()
         }
     }
 }

@@ -31,6 +31,7 @@ enum MeetingService: String, CaseIterable {
 struct MeetingLinkPreferences {
     var applications: [String: String] = [:]
     var chromeProfiles: [String: String] = [:]
+    var reuseSafariMeetWindow = false
 
     static var configURL: URL { ConfigFile.url }
 
@@ -41,7 +42,8 @@ struct MeetingLinkPreferences {
         }
         return MeetingLinkPreferences(
             applications: (raw["meeting_apps"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String },
-            chromeProfiles: (raw["meeting_app_profiles"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+            chromeProfiles: (raw["meeting_app_profiles"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String },
+            reuseSafariMeetWindow: raw["reuse_safari_meet_window"] as? Bool ?? false
         )
     }
 
